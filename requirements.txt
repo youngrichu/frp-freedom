@@ -1,0 +1,32 @@
+# FRP Freedom - Python Desktop Application Dependencies
+
+# Core dependencies
+tkinter-tooltip>=1.1.0
+pillow>=10.0.0
+psutil>=5.9.0
+pyserial>=3.5
+requests>=2.31.0
+cryptography>=41.0.0
+# Database utilities (sqlite3 is built into Python)
+
+# USB and device communication
+pyusb>=1.2.1
+libusb1>=3.0.0
+
+# ADB and fastboot tools (will be bundled)
+# adb-shell>=0.4.3
+# fastboot-python>=0.1.0
+
+# Logging and configuration
+pyyaml>=6.0
+coloredlogs>=15.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+flake8>=6.0.0
+
+# Build and packaging
+pyinstaller>=5.13.0
+cx-freeze>=6.15.0
