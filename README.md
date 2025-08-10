@@ -35,19 +35,18 @@
 ### User Experience
 - **Wizard Interface**: Step-by-step guided process
 - **Device Detection**: Automatic Android device recognition
-- **AI-Powered Recommendations**: Intelligent method selection based on device analysis
+- **Smart Recommendations**: Intelligent method selection based on device analysis
 - **Progress Tracking**: Real-time execution monitoring
-- **Smart Notifications**: AI-driven insights and recommendations
+- **Smart Notifications**: Intelligent insights and recommendations
 - **Comprehensive Logging**: Detailed operation logs
 
-### 🤖 AI Features
-- **Intelligent Device Analysis**: AI-powered vulnerability assessment and device profiling
-- **Smart Method Recommendations**: Machine learning-based bypass method selection
-- **Adaptive Learning**: System learns from successful and failed attempts
-- **Contextual Help**: AI-generated guidance for specific device configurations
-- **Performance Insights**: Real-time analysis of method effectiveness
-- **Predictive Success Rates**: AI-calculated probability estimates for each method
-- **Automated Notifications**: Smart alerts for method recommendations and learning updates
+### 🤖 Intelligent Features
+- **Smart Device Analysis**: Rule-based vulnerability assessment and device profiling
+- **Method Recommendations**: Heuristic-based bypass method selection
+- **Performance Tracking**: System tracks successful and failed attempts
+- **Contextual Help**: Device-specific guidance and troubleshooting tips
+- **Success Rate Estimation**: Historical data-based probability estimates
+- **Smart Notifications**: Intelligent alerts for method recommendations and insights
 
 ### Compatibility
 - **Android Versions**: 5.0 (API 21) to 15.0 (API 35)
@@ -217,10 +216,10 @@ frp-freedom/
 │   │   ├── config.py      # Configuration management
 │   │   ├── logger.py      # Logging and audit trail
 │   │   └── device_manager.py  # Device detection and communication
-│   ├── ai/                # AI and machine learning
+│   ├── ai/                # Intelligent analysis and recommendations
 │   │   ├── __init__.py
-│   │   ├── ai_engine.py        # Core AI engine with device analysis
-│   │   └── notification_system.py  # AI-powered notification system
+│   │   ├── ai_engine.py        # Device analysis and method recommendations
+│   │   └── notification_system.py  # Smart notification system
 │   ├── bypass/            # Bypass methods
 │   │   ├── __init__.py
 │   │   ├── bypass_manager.py   # Bypass coordination with AI integration
@@ -271,32 +270,32 @@ frp-freedom/
    python test_ai_features.py
    ```
 
-### 🤖 AI Features Usage
+### 🤖 Intelligent Features Usage
 
-#### AI-Powered Device Analysis
-The AI engine automatically analyzes connected devices and provides:
-- **Vulnerability Assessment**: Identifies potential security weaknesses
-- **Device Profiling**: Creates detailed device fingerprints
+#### Smart Device Analysis
+The intelligent engine automatically analyzes connected devices and provides:
+- **Vulnerability Assessment**: Rule-based identification of potential security weaknesses
+- **Device Profiling**: Creates detailed device fingerprints using known patterns
 - **Method Compatibility**: Determines which bypass methods are most suitable
 
-#### Smart Recommendations
-- AI suggests the most effective bypass methods based on device analysis
-- Success probability estimates help prioritize method selection
+#### Method Recommendations
+- System suggests the most effective bypass methods based on device analysis
+- Success probability estimates help prioritize method selection using historical data
 - Contextual help provides device-specific guidance
 
-#### Adaptive Learning
-- System learns from each bypass attempt (success or failure)
-- Performance tracking improves future recommendations
+#### Performance Tracking
+- System tracks each bypass attempt (success or failure)
+- Performance data improves future recommendations
 - Method effectiveness is continuously updated based on real-world results
 
-#### AI Notifications
+#### Smart Notifications
 - Real-time insights about device analysis results
 - Method recommendations with explanations
-- Learning updates when new patterns are discovered
-- Performance alerts and optimization suggestions
+- Performance updates when new patterns are discovered
+- Optimization suggestions and alerts
 
-#### Testing AI Features
-Run the comprehensive AI test suite:
+#### Testing Intelligent Features
+Run the comprehensive test suite:
 ```bash
 python test_ai_features.py
 ```
@@ -319,9 +318,9 @@ The test suite validates:
 
 ## 📊 Supported Devices
 
-### Tested Devices (AI-Enhanced)
+### Tested Devices (Smart-Enhanced)
 
-| Brand | Models | Android Versions | Success Rate | AI Boost |
+| Brand | Models | Android Versions | Success Rate | Smart Boost |
 |-------|--------|------------------|-------------|----------|
 | Samsung | Galaxy S/Note series, A series | 6.0 - 14.0 | 85-95% | +5-10% |
 | Google | Pixel series | 7.0 - 14.0 | 90-98% | +3-7% |
@@ -332,16 +331,16 @@ The test suite validates:
 | Sony | Xperia series | 6.0 - 13.0 | 75-85% | +7-12% |
 | Motorola | Moto series | 6.0 - 13.0 | 80-88% | +5-9% |
 
-*AI Boost: Improvement in success rates when using AI-powered method selection vs. manual selection*
+*Smart Boost: Improvement in success rates when using intelligent method selection vs. manual selection*
 
 ### Compatibility Notes
 
 - **Higher success rates** on older Android versions (6.0-9.0)
 - **Samsung devices** generally have the highest success rates
-- **AI-enhanced selection** significantly improves success rates across all devices
-- **Custom ROMs** may have different success rates (AI adapts to custom configurations)
-- **Carrier-locked devices** may require additional steps (AI provides carrier-specific recommendations)
-- **AI learning** continuously improves compatibility with new device models and Android versions
+- **Smart selection** significantly improves success rates across all devices
+- **Custom ROMs** may have different success rates (system adapts to custom configurations)
+- **Carrier-locked devices** may require additional steps (system provides carrier-specific recommendations)
+- **Performance tracking** continuously improves compatibility with new device models and Android versions
 
 ## 🔒 Security Features
 
