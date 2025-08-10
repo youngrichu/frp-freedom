@@ -51,18 +51,40 @@ class BypassManager:
                     estimated_time=5,
                     requirements=["USB connection", "Setup wizard active"],
                     supported_devices=["Samsung", "Google", "LG", "HTC"],
-                    android_versions=["5.0", "6.0", "7.0", "8.0", "9.0"]
+                    android_versions=["5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"]
                 ),
                 BypassMethod(
-                    name="adb_talkback",
-                    description="Use TalkBack accessibility to bypass FRP",
+                    name="adb_talkback_chrome",
+                    description="TalkBack + Chrome navigation for Android 14/15 (2025 method)",
+                    category="adb",
+                    risk_level="low",
+                    success_rate=0.92,
+                    estimated_time=6,
+                    requirements=["TalkBack available", "Chrome browser", "Voice commands"],
+                    supported_devices=["Samsung Galaxy A04", "Samsung Galaxy S24", "Samsung"],
+                    android_versions=["14.0", "15.0"]
+                ),
+                BypassMethod(
+                    name="adb_talkback_legacy",
+                    description="Use TalkBack accessibility to bypass FRP (legacy method)",
                     category="adb",
                     risk_level="low",
                     success_rate=0.75,
                     estimated_time=8,
                     requirements=["ADB access", "TalkBack available"],
                     supported_devices=["Samsung", "Google", "Xiaomi"],
-                    android_versions=["5.0", "6.0", "7.0", "8.0"]
+                    android_versions=["5.0", "6.0", "7.0", "8.0", "9.0", "10.0"]
+                ),
+                BypassMethod(
+                    name="adb_intent_manipulation",
+                    description="ADB intent manipulation for SQLite database editing",
+                    category="adb",
+                    risk_level="medium",
+                    success_rate=0.88,
+                    estimated_time=10,
+                    requirements=["ADB access", "USB debugging enabled"],
+                    supported_devices=["Samsung", "Xiaomi", "Huawei", "Google"],
+                    android_versions=["12.0", "13.0", "14.0", "15.0"]
                 )
             ])
         
@@ -77,7 +99,7 @@ class BypassManager:
                 estimated_time=10,
                 requirements=["Physical access", "Emergency call available"],
                 supported_devices=["Samsung", "LG", "HTC"],
-                android_versions=["5.0", "6.0", "7.0"]
+                android_versions=["5.0", "6.0", "7.0", "8.0"]
             ),
             BypassMethod(
                 name="chrome_intent_exploit",
@@ -88,7 +110,29 @@ class BypassManager:
                 estimated_time=12,
                 requirements=["ADB access", "Chrome browser"],
                 supported_devices=["Samsung", "Google", "Xiaomi"],
-                android_versions=["6.0", "7.0", "8.0", "9.0"]
+                android_versions=["6.0", "7.0", "8.0", "9.0", "10.0"]
+            ),
+            BypassMethod(
+                name="apk_injection_setup",
+                description="APK injection during setup wizard (no-PC method)",
+                category="interface",
+                risk_level="medium",
+                success_rate=0.82,
+                estimated_time=15,
+                requirements=["Physical access", "Setup wizard active", "File manager access"],
+                supported_devices=["Xiaomi", "Huawei", "Samsung"],
+                android_versions=["13.0", "14.0", "15.0"]
+            ),
+            BypassMethod(
+                name="samsung_setup_wizard_2025",
+                description="Samsung-specific setup wizard exploit (2025 method)",
+                category="interface",
+                risk_level="low",
+                success_rate=0.95,
+                estimated_time=8,
+                requirements=["Samsung device", "Setup wizard", "Precise timing"],
+                supported_devices=["Samsung Galaxy A04", "Samsung Galaxy S24", "Samsung"],
+                android_versions=["14.0", "15.0"]
             )
         ])
         
@@ -115,7 +159,18 @@ class BypassManager:
                     estimated_time=20,
                     requirements=["Unlocked bootloader", "Custom recovery"],
                     supported_devices=["Samsung", "Google", "Xiaomi"],
-                    android_versions=["6.0", "7.0", "8.0", "9.0", "10.0", "11.0"]
+                    android_versions=["6.0", "7.0", "8.0", "9.0", "10.0", "11.0", "12.0", "13.0"]
+                ),
+                BypassMethod(
+                    name="framework_patch_android15",
+                    description="Framework patching for Android 15 hardened FRP",
+                    category="system",
+                    risk_level="high",
+                    success_rate=0.78,
+                    estimated_time=35,
+                    requirements=["Root access", "Custom recovery", "Framework modification"],
+                    supported_devices=["Samsung", "Google", "Xiaomi"],
+                    android_versions=["15.0"]
                 )
             ])
         
@@ -131,18 +186,40 @@ class BypassManager:
                     estimated_time=30,
                     requirements=["Download mode", "Custom firmware"],
                     supported_devices=["Samsung"],
-                    android_versions=["5.0", "6.0", "7.0", "8.0", "9.0", "10.0"]
+                    android_versions=["5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"]
                 ),
                 BypassMethod(
-                    name="qualcomm_edl_exploit",
-                    description="Use Qualcomm EDL mode to bypass FRP",
+                    name="qualcomm_edl_2025",
+                    description="Qualcomm EDL mode with 2025 GPU exploits (CVE-2025-48530)",
                     category="hardware",
                     risk_level="high",
-                    success_rate=0.80,
-                    estimated_time=45,
-                    requirements=["EDL mode", "Qualcomm chipset"],
-                    supported_devices=["Xiaomi", "OnePlus", "Google"],
-                    android_versions=["6.0", "7.0", "8.0", "9.0", "10.0", "11.0"]
+                    success_rate=0.92,
+                    estimated_time=35,
+                    requirements=["EDL mode", "Qualcomm chipset", "GPU vulnerability"],
+                    supported_devices=["Samsung Galaxy S24", "Xiaomi", "OnePlus", "Google"],
+                    android_versions=["13.0", "14.0", "15.0"]
+                ),
+                BypassMethod(
+                    name="mediatek_cve_2025",
+                    description="MediaTek out-of-bounds write exploit (CVE-2025-20698)",
+                    category="hardware",
+                    risk_level="high",
+                    success_rate=0.89,
+                    estimated_time=40,
+                    requirements=["MediaTek chipset", "SP Flash Tool", "Custom firmware"],
+                    supported_devices=["Xiaomi", "Realme", "Oppo"],
+                    android_versions=["13.0", "14.0", "15.0"]
+                ),
+                BypassMethod(
+                    name="mali_gpu_pixel_exploit",
+                    description="Mali GPU vulnerability for Pixel devices (2024 method)",
+                    category="hardware",
+                    risk_level="high",
+                    success_rate=0.87,
+                    estimated_time=25,
+                    requirements=["Google Pixel", "Mali GPU", "Kernel exploit"],
+                    supported_devices=["Google Pixel 7", "Google Pixel 8", "Google Pixel 8 Pro"],
+                    android_versions=["14.0"]
                 )
             ])
         
