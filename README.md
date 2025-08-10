@@ -78,7 +78,7 @@
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/your-org/frp-freedom.git
+   git clone https://github.com/habtamu/frp-freedom.git
    cd frp-freedom
    ```
 
@@ -244,7 +244,7 @@ frp-freedom/
 
 1. **Fork and Clone**
    ```bash
-   git clone https://github.com/your-username/frp-freedom.git
+   git clone https://github.com/habtamu/frp-freedom.git
    cd frp-freedom
    ```
 
@@ -414,10 +414,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Documentation**: [GitHub Wiki](https://github.com/your-org/frp-freedom/wiki)
-- **Issues**: [GitHub Issues](https://github.com/your-org/frp-freedom/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/frp-freedom/discussions)
-- **Email**: support@frp-freedom.org (for security issues only)
+- **Documentation**: [GitHub Wiki](https://github.com/habtamu/frp-freedom/wiki)
+- **Issues**: [GitHub Issues](https://github.com/habtamu/frp-freedom/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/habtamu/frp-freedom/discussions)
+- **Email**: habtamu@zaraytech.com (for support and security issues)
 
 ---
 
