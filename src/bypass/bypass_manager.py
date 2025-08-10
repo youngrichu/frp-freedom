@@ -14,6 +14,7 @@ from .adb_exploits import ADBExploitManager
 from .interface_exploits import InterfaceExploitManager
 from .system_exploits import SystemExploitManager
 from .hardware_exploits import HardwareExploitManager
+from ..ai.ai_engine import AIEngine, DeviceProfile
     
 class BypassManager:
     """Main bypass coordination class"""
@@ -28,6 +29,12 @@ class BypassManager:
         self.interface_exploits = InterfaceExploitManager(config, device_manager)
         self.system_exploits = SystemExploitManager(config, device_manager)
         self.hardware_exploits = HardwareExploitManager(config, device_manager)
+        
+        # Initialize AI engine
+        self.ai_engine = AIEngine(config)
+        
+        # Initialize notification system (will be set later)
+        self.notification_system = None
         
         # Progress callback
         self.progress_callback: Optional[Callable[[str, int], None]] = None
@@ -226,16 +233,40 @@ class BypassManager:
         return methods
     
     def get_recommended_methods(self, device: DeviceInfo) -> List[BypassMethod]:
-        """Get recommended bypass methods for a specific device"""
-        recommended = []
+        """Get AI-enhanced recommended bypass methods for a specific device"""
+        # Get AI analysis of the device
+        device_profile = self.ai_engine.analyze_device(device)
         
+        # Get compatible methods using traditional logic
+        compatible_methods = []
         for method in self.available_methods:
-            # Check device compatibility
             if self._is_method_compatible(method, device):
-                recommended.append(method)
+                compatible_methods.append(method)
         
-        # Sort by success rate and risk level
-        recommended.sort(key=lambda m: (m.success_rate, -self._risk_score(m.risk_level)), reverse=True)
+        # Enhance with AI recommendations
+        ai_recommended_names = device_profile.recommended_methods
+        ai_methods = [m for m in compatible_methods if m.name in ai_recommended_names]
+        other_methods = [m for m in compatible_methods if m.name not in ai_recommended_names]
+        
+        # Sort AI methods by success probability
+        ai_methods.sort(key=lambda m: device_profile.success_probability.get(m.name, 0.5), reverse=True)
+        
+        # Sort other methods by traditional criteria
+        other_methods.sort(key=lambda m: (m.success_rate, -self._risk_score(m.risk_level)), reverse=True)
+        
+        # Combine: AI recommendations first, then others
+        recommended = ai_methods + other_methods
+        
+        self.logger.info(f"AI recommended {len(ai_methods)} methods for {device.brand} {device.model}")
+        
+        # Send notification about method recommendations
+        if self.notification_system and ai_methods:
+            top_method = ai_methods[0]
+            success_prob = analysis.get('success_probabilities', {}).get(top_method.name, 0.5)
+            self.notification_system.notify_method_recommendation(
+                top_method.name,
+                success_prob
+            )
         
         return recommended
     
@@ -269,8 +300,9 @@ class BypassManager:
     
     def execute_bypass(self, device: DeviceInfo, method_name: str, 
                       progress_callback: Optional[Callable[[str, int], None]] = None) -> Dict[str, Any]:
-        """Execute a specific bypass method"""
+        """Execute a specific bypass method with AI monitoring"""
         self.progress_callback = progress_callback
+        start_time = time.time()
         
         # Find the method
         method = next((m for m in self.available_methods if m.name == method_name), None)
@@ -319,15 +351,44 @@ class BypassManager:
                     result['result'] = BypassResult.PARTIAL
                     result['message'] = "Bypass partially successful, manual verification needed"
             
+            # Update AI performance tracking
+            execution_time = time.time() - start_time
+            self.ai_engine.update_method_performance(method_name, device, result['result'], execution_time)
+            
+            # Send failure notification if method failed
+            if result['result'] == BypassResult.FAILED and self.notification_system:
+                suggested_method = self.suggest_next_method(device, [method_name])
+                if suggested_method:
+                    self.notification_system.notify_method_failure_insight(
+                        method_name,
+                        suggested_method.name,
+                        lambda data: self.execute_bypass(device, data['suggested_alternative'])
+                    )
+            
             return result
-        
+            
         except Exception as e:
-            self.logger.error(f"Error executing bypass method '{method_name}': {e}")
+            execution_time = time.time() - start_time
+            self.logger.error(f"Bypass method '{method_name}' failed with error: {e}")
+            
+            # Update AI with failure
+            self.ai_engine.update_method_performance(method_name, device, BypassResult.FAILED, execution_time)
+            
+            # Send failure notification
+            if self.notification_system:
+                suggested_method = self.suggest_next_method(device, [method_name])
+                if suggested_method:
+                    self.notification_system.notify_method_failure_insight(
+                        method_name,
+                        suggested_method.name,
+                        lambda data: self.execute_bypass(device, data['suggested_alternative'])
+                    )
+            
             return {
-                'result': BypassResult.FAILED,
-                'message': f'Bypass execution failed: {str(e)}',
-                'details': {'exception': str(e)}
-            }
+                 'result': BypassResult.FAILED,
+                 'message': f'Bypass execution failed: {str(e)}',
+                 'details': {'error': str(e), 'execution_time': execution_time}
+             }
     
     def _pre_bypass_checks(self, device: DeviceInfo, method: BypassMethod) -> bool:
         """Perform pre-bypass security and compatibility checks"""
@@ -460,3 +521,89 @@ class BypassManager:
             base_time *= 1.2  # Pixel devices have strong security
         
         return int(base_time)
+    
+    def get_ai_device_analysis(self, device: DeviceInfo) -> Dict[str, Any]:
+        """Get comprehensive AI analysis of device"""
+        profile = self.ai_engine.analyze_device(device)
+        
+        result = {
+            'device_profile': {
+                'frp_complexity': profile.frp_complexity,
+                'vulnerability_score': profile.vulnerability_score,
+                'recommended_methods': profile.recommended_methods,
+                'success_probabilities': profile.success_probability
+            },
+            'security_assessment': self._get_security_assessment_text(profile.vulnerability_score),
+            'bypass_strategy': self._get_bypass_strategy(profile)
+        }
+        
+        # Send notification about analysis completion
+        if self.notification_system:
+            self.notification_system.notify_device_analysis_complete(
+                profile.vulnerability_score,
+                profile.recommended_methods
+            )
+        
+        return result
+    
+    def _get_security_assessment_text(self, vulnerability_score: float) -> str:
+        """Convert vulnerability score to human-readable assessment"""
+        if vulnerability_score > 0.7:
+            return "High vulnerability detected - Multiple bypass methods likely to succeed"
+        elif vulnerability_score > 0.4:
+            return "Medium vulnerability - Some methods may work with proper execution"
+        else:
+            return "Low vulnerability - Limited bypass options, advanced techniques may be required"
+    
+    def _get_bypass_strategy(self, profile: DeviceProfile) -> str:
+        """Generate AI-driven bypass strategy"""
+        if profile.frp_complexity == 'low':
+            return "Start with ADB-based methods, then try interface exploits"
+        elif profile.frp_complexity == 'medium':
+            return "Combine multiple methods, focus on device-specific exploits"
+        elif profile.frp_complexity == 'high':
+            return "Use advanced techniques, consider hardware-based methods"
+        else:
+            return "Extreme security - Hardware exploits or professional tools may be required"
+    
+    def get_contextual_help(self, device: DeviceInfo, method_name: str) -> Dict[str, Any]:
+        """Get AI-powered contextual help for a specific method"""
+        return self.ai_engine.get_contextual_help(device, method_name)
+    
+    def set_notification_system(self, notification_system):
+        """Set the notification system for AI insights"""
+        self.notification_system = notification_system
+    
+    def get_ai_insights(self) -> Dict[str, Any]:
+        """Get AI learning insights and performance statistics"""
+        insights = self.ai_engine.get_learning_insights()
+        
+        # Send notification if system is available
+        if self.notification_system and insights.get('new_insights'):
+            learning_status = insights.get('learning_status', 'Unknown')
+            success_rate = insights.get('overall_success_rate', 0.0)
+            self.notification_system.notify_learning_update(
+                f"AI Learning Status: {learning_status}. Overall success rate: {success_rate:.1%}"
+            )
+        
+        return insights
+    
+    def suggest_next_method(self, device: DeviceInfo, failed_methods: List[str]) -> Optional[BypassMethod]:
+        """AI-powered suggestion for next method to try after failures"""
+        profile = self.ai_engine.analyze_device(device)
+        
+        # Get methods not yet tried
+        available_methods = [m for m in profile.recommended_methods if m not in failed_methods]
+        
+        if not available_methods:
+            # Fall back to other compatible methods
+            compatible = self.get_recommended_methods(device)
+            available_methods = [m.name for m in compatible if m.name not in failed_methods]
+        
+        if available_methods:
+            # Return method with highest success probability
+            best_method_name = max(available_methods, 
+                                 key=lambda m: profile.success_probability.get(m, 0.0))
+            return self.get_method_info(best_method_name)
+        
+        return None

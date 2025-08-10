@@ -15,6 +15,7 @@ from ..core.config import Config
 from ..core.logger import setup_logging, AuditLogger
 from ..core.device_manager import DeviceManager, DeviceInfo
 from ..bypass.bypass_manager import BypassManager, BypassResult
+from ..ai import AINotificationSystem
 from .device_selection import DeviceSelectionFrame
 from .method_selection import MethodSelectionFrame
 from .utils import ProgressDialog
@@ -33,6 +34,9 @@ class FRPFreedomApp:
         self.device_manager = DeviceManager(self.config)
         self.bypass_manager = BypassManager(self.config, self.device_manager)
         
+        # Initialize AI notification system (will be set after window creation)
+        self.notification_system = None
+        
         # GUI state
         self.current_step = 0
         self.selected_device: Optional[DeviceInfo] = None
@@ -44,6 +48,12 @@ class FRPFreedomApp:
         self.setup_styles()
         self.create_widgets()
         self.setup_menu()
+        
+        # Initialize AI notification system
+        self.notification_system = AINotificationSystem(self.root)
+        
+        # Integrate notification system with bypass manager
+        self.bypass_manager.set_notification_system(self.notification_system)
         
         # Start device scanning
         self.start_device_scanning()
