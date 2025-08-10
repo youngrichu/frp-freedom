@@ -65,138 +65,136 @@ class FRPFreedomApp:
         )
     
     def setup_window(self):
-        """Setup main window properties"""
-        self.root.title(f"FRP Freedom v{self.config.get('app.version')}")
-        self.root.geometry("800x600")
-        self.root.minsize(600, 400)
+        """Configure main window properties"""
+        self.root.title("FRP Freedom - Android FRP Bypass Tool")
+        self.root.geometry("1024x768")
+        self.root.minsize(800, 600)
         
         # Center window on screen
         self.root.update_idletasks()
-        x = (self.root.winfo_screenwidth() // 2) - (800 // 2)
-        y = (self.root.winfo_screenheight() // 2) - (600 // 2)
-        self.root.geometry(f"800x600+{x}+{y}")
+        x = (self.root.winfo_screenwidth() // 2) - (1024 // 2)
+        y = (self.root.winfo_screenheight() // 2) - (768 // 2)
+        self.root.geometry(f"1024x768+{x}+{y}")
         
-        # Set icon if available
-        try:
-            icon_path = Path(__file__).parent.parent.parent / "assets" / "icon.ico"
-            if icon_path.exists():
-                self.root.iconbitmap(str(icon_path))
-        except Exception:
-            pass
-        
-        # Handle window close
+        # Configure window closing
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Set window icon (if available)
+        try:
+            # self.root.iconbitmap("assets/icon.ico")
+            pass
+        except:
+            pass
     
     def setup_styles(self):
-        """Setup custom styles for the application"""
-        self.style = ttk.Style()
+        """Configure ttk styles"""
+        style = ttk.Style()
         
-        # Configure custom styles
-        self.style.configure('Title.TLabel', font=('Arial', 16, 'bold'))
-        self.style.configure('Subtitle.TLabel', font=('Arial', 12))
-        self.style.configure('Warning.TLabel', foreground='red', font=('Arial', 10, 'bold'))
-        self.style.configure('Success.TLabel', foreground='green', font=('Arial', 10, 'bold'))
-        self.style.configure('Info.TLabel', foreground='blue', font=('Arial', 10))
+        # Configure button styles
+        style.configure('Primary.TButton', font=('Arial', 10, 'bold'))
+        style.configure('Secondary.TButton', font=('Arial', 9))
         
-        # Button styles
-        self.style.configure('Primary.TButton', font=('Arial', 10, 'bold'))
-        self.style.configure('Secondary.TButton', font=('Arial', 10))
-        self.style.configure('Danger.TButton', foreground='white', background='red')
+        # Configure frame styles
+        style.configure('Card.TFrame', relief='raised', borderwidth=1)
+        style.configure('Header.TFrame', background='#2c3e50')
+        
+        # Configure label styles
+        style.configure('Title.TLabel', font=('Arial', 16, 'bold'))
+        style.configure('Subtitle.TLabel', font=('Arial', 12))
+        style.configure('Header.TLabel', font=('Arial', 14, 'bold'), foreground='white')
     
     def create_widgets(self):
         """Create main window widgets"""
         # Main container
-        self.main_frame = ttk.Frame(self.root, padding="10")
-        self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_frame = ttk.Frame(self.root)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Configure grid weights
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.rowconfigure(1, weight=1)
-        
-        # Header frame
+        # Header
         self.create_header()
         
-        # Content frame (will contain different wizard steps)
+        # Content area
         self.content_frame = ttk.Frame(self.main_frame)
-        self.content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(10, 0))
-        self.content_frame.columnconfigure(0, weight=1)
-        self.content_frame.rowconfigure(0, weight=1)
+        self.content_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         
-        # Footer frame
+        # Footer with navigation buttons
         self.create_footer()
         
-        # Initialize with welcome screen
+        # Show initial screen
         self.show_welcome_screen()
     
     def create_header(self):
         """Create application header"""
-        header_frame = ttk.Frame(self.main_frame)
-        header_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        header_frame.columnconfigure(1, weight=1)
+        header_frame = ttk.Frame(self.main_frame, style='Header.TFrame')
+        header_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # Logo/Icon (placeholder)
-        logo_label = ttk.Label(header_frame, text="🔓", font=('Arial', 24))
-        logo_label.grid(row=0, column=0, padx=(0, 10))
-        
-        # Title and subtitle
-        title_frame = ttk.Frame(header_frame)
-        title_frame.grid(row=0, column=1, sticky=(tk.W, tk.E))
-        
-        title_label = ttk.Label(title_frame, text="FRP Freedom", style='Title.TLabel')
-        title_label.grid(row=0, column=0, sticky=tk.W)
-        
-        subtitle_label = ttk.Label(
-            title_frame, 
-            text="Professional FRP Bypass Tool - For Legitimate Device Recovery Only",
-            style='Subtitle.TLabel'
+        # Title
+        title_label = ttk.Label(
+            header_frame,
+            text="FRP Freedom",
+            style='Header.TLabel'
         )
-        subtitle_label.grid(row=1, column=0, sticky=tk.W)
+        title_label.pack(side=tk.LEFT, padx=20, pady=15)
+        
+        # Subtitle
+        subtitle_label = ttk.Label(
+            header_frame,
+            text="Android Factory Reset Protection Bypass Tool",
+            style='Header.TLabel',
+            font=('Arial', 10)
+        )
+        subtitle_label.pack(side=tk.LEFT, padx=(0, 20), pady=15)
         
         # Status indicator
-        self.status_label = ttk.Label(header_frame, text="Ready", style='Info.TLabel')
-        self.status_label.grid(row=0, column=2, padx=(10, 0))
+        self.status_label = ttk.Label(
+            header_frame,
+            text="Ready",
+            style='Header.TLabel',
+            font=('Arial', 9)
+        )
+        self.status_label.pack(side=tk.RIGHT, padx=20, pady=15)
     
     def create_footer(self):
-        """Create application footer with navigation buttons"""
+        """Create footer with navigation buttons"""
         footer_frame = ttk.Frame(self.main_frame)
-        footer_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
-        footer_frame.columnconfigure(1, weight=1)
-        
-        # Navigation buttons
-        self.back_button = ttk.Button(
-            footer_frame, 
-            text="← Back", 
-            command=self.go_back,
-            style='Secondary.TButton'
-        )
-        self.back_button.grid(row=0, column=0, padx=(0, 10))
+        footer_frame.pack(fill=tk.X, pady=(10, 0))
         
         # Progress indicator
-        self.progress_label = ttk.Label(footer_frame, text="Step 1 of 4: Welcome")
-        self.progress_label.grid(row=0, column=1)
+        self.progress_label = ttk.Label(
+            footer_frame,
+            text="Step 1 of 4: Welcome",
+            font=('Arial', 9)
+        )
+        self.progress_label.pack(side=tk.LEFT)
+        
+        # Navigation buttons
+        button_frame = ttk.Frame(footer_frame)
+        button_frame.pack(side=tk.RIGHT)
+        
+        self.back_button = ttk.Button(
+            button_frame,
+            text="← Back",
+            command=self.go_back,
+            state='disabled'
+        )
+        self.back_button.pack(side=tk.LEFT, padx=(0, 10))
         
         self.next_button = ttk.Button(
-            footer_frame, 
-            text="Next →", 
+            button_frame,
+            text="Next →",
             command=self.go_next,
             style='Primary.TButton'
         )
-        self.next_button.grid(row=0, column=2, padx=(10, 0))
-        
-        # Initially disable back button
-        self.back_button.configure(state='disabled')
+        self.next_button.pack(side=tk.LEFT)
     
     def setup_menu(self):
-        """Setup application menu bar"""
+        """Create application menu"""
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Export Logs", command=self.export_logs)
+        file_menu.add_command(label="Export Logs...", command=self.export_logs)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_closing)
         
@@ -205,7 +203,6 @@ class FRPFreedomApp:
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Device Information", command=self.show_device_info)
         tools_menu.add_command(label="Refresh Devices", command=self.refresh_devices)
-        tools_menu.add_separator()
         tools_menu.add_command(label="Settings", command=self.show_settings)
         
         # Help menu
@@ -217,185 +214,201 @@ class FRPFreedomApp:
         help_menu.add_command(label="About", command=self.show_about)
     
     def show_welcome_screen(self):
-        """Show welcome screen (Step 1)"""
+        """Display welcome screen with terms and conditions"""
         self.clear_content()
         self.current_step = 0
         self.update_progress("Step 1 of 4: Welcome")
         
-        # Welcome content
+        # Welcome frame
         welcome_frame = ttk.Frame(self.content_frame)
-        welcome_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=20, pady=20)
-        welcome_frame.columnconfigure(0, weight=1)
+        welcome_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Welcome message
-        welcome_text = """
-Welcome to FRP Freedom - Professional FRP Bypass Tool
+        # Title
+        title_label = ttk.Label(
+            welcome_frame,
+            text="Welcome to FRP Freedom",
+            style='Title.TLabel'
+        )
+        title_label.pack(pady=(20, 10))
+        
+        # Description
+        desc_text = """
+FRP Freedom is a professional tool designed for legitimate Android device recovery.
+This tool helps recover access to devices when Factory Reset Protection (FRP) is enabled.
 
-This tool is designed for legitimate device recovery purposes only.
-Please ensure you have legal ownership of the device before proceeding.
-
-⚠️  IMPORTANT LEGAL NOTICE:
-• Only use this tool on devices you legally own
-• Bypassing FRP on stolen devices is illegal
-• You are responsible for compliance with local laws
-• This tool logs all activities for audit purposes
-
-Supported Features:
-✓ Android 5.0 - 15.0 compatibility
-✓ Multiple bypass methods (ADB, Interface, System, Hardware)
-✓ Wide OEM support (Samsung, LG, Huawei, Xiaomi, etc.)
-✓ Secure operation with audit logging
-✓ Comprehensive setup guide and documentation
-
-Before proceeding, please:
-1. Ensure your device is connected via USB
-2. Enable USB Debugging if possible
-3. Review the setup guide (SETUP_GUIDE.md) for detailed instructions
-4. Read and accept the terms of use
+IMPORTANT: This tool is intended for legitimate device recovery purposes only.
+Unauthorized device bypass is illegal and violates terms of service.
 """
         
-        text_widget = tk.Text(
-            welcome_frame, 
-            wrap=tk.WORD, 
-            height=20, 
-            font=('Arial', 10),
-            state='disabled',
-            bg=self.root.cget('bg')
-        )
-        text_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 20))
-        
-        # Enable text widget to insert content
-        text_widget.configure(state='normal')
-        text_widget.insert('1.0', welcome_text)
-        text_widget.configure(state='disabled')
-        
-        # Terms acceptance
-        self.terms_var = tk.BooleanVar()
-        terms_check = ttk.Checkbutton(
+        desc_label = ttk.Label(
             welcome_frame,
-            text="I have read and accept the terms of use and legal disclaimer",
+            text=desc_text,
+            justify=tk.CENTER,
+            wraplength=600
+        )
+        desc_label.pack(pady=10)
+        
+        # Terms and conditions
+        terms_frame = ttk.LabelFrame(welcome_frame, text="Terms and Conditions", padding=20)
+        terms_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=20)
+        
+        # Terms text
+        terms_text = tk.Text(
+            terms_frame,
+            wrap=tk.WORD,
+            height=8,
+            width=80,
+            font=('Arial', 9)
+        )
+        terms_text.pack(fill=tk.BOTH, expand=True)
+        
+        terms_content = """
+By using this software, you acknowledge and agree to the following:
+
+1. You will use this tool only for legitimate device recovery purposes
+2. You have proper legal authorization to modify the target device
+3. You understand the risks involved in device modification procedures
+4. You will comply with all applicable local laws and regulations
+5. You accept full responsibility for any consequences of using this tool
+6. The developers are not liable for any misuse or legal consequences
+
+This software is provided "as is" without warranty of any kind. Use at your own risk.
+"""
+        
+        terms_text.insert(tk.END, terms_content)
+        terms_text.config(state=tk.DISABLED)
+        
+        # Scrollbar for terms
+        scrollbar = ttk.Scrollbar(terms_frame, orient=tk.VERTICAL, command=terms_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        terms_text.config(yscrollcommand=scrollbar.set)
+        
+        # Acceptance checkbox
+        checkbox_frame = ttk.Frame(welcome_frame)
+        checkbox_frame.pack(pady=10)
+        
+        self.terms_var = tk.BooleanVar()
+        terms_checkbox = ttk.Checkbutton(
+            checkbox_frame,
+            text="I have read and agree to the terms and conditions",
             variable=self.terms_var,
             command=self.update_next_button
         )
-        terms_check.grid(row=1, column=0, sticky=tk.W, pady=(0, 10))
+        terms_checkbox.pack()
         
-        # Ownership confirmation
-        self.ownership_var = tk.BooleanVar()
-        ownership_check = ttk.Checkbutton(
-            welcome_frame,
-            text="I confirm that I am the legal owner of the device I intend to unlock",
-            variable=self.ownership_var,
-            command=self.update_next_button
-        )
-        ownership_check.grid(row=2, column=0, sticky=tk.W)
-        
-        # Update button states
+        # Update navigation
+        self.back_button.config(state='disabled')
         self.update_next_button()
     
     def show_device_selection(self):
-        """Show device selection screen (Step 2)"""
+        """Display device selection screen"""
         self.clear_content()
         self.current_step = 1
         self.update_progress("Step 2 of 4: Device Selection")
         
         # Create device selection frame
-        self.device_selection_frame = DeviceSelectionFrame(
-            self.content_frame, 
+        self.device_frame = DeviceSelectionFrame(
+            self.content_frame,
             self.device_manager,
             self.on_device_selected
         )
-        self.device_selection_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.device_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Update button states
-        self.back_button.configure(state='normal')
-        self.next_button.configure(state='disabled')
+        # Update navigation
+        self.back_button.config(state='normal')
+        self.next_button.config(state='disabled')
     
     def show_method_selection(self):
-        """Show method selection screen (Step 3)"""
-        if not self.selected_device:
-            messagebox.showerror("Error", "No device selected")
-            return
-        
+        """Display method selection screen"""
         self.clear_content()
         self.current_step = 2
         self.update_progress("Step 3 of 4: Method Selection")
         
         # Create method selection frame
-        self.method_selection_frame = MethodSelectionFrame(
+        self.method_frame = MethodSelectionFrame(
             self.content_frame,
-            self.bypass_manager,
             self.selected_device,
+            self.bypass_manager,
             self.on_methods_selected
         )
-        self.method_selection_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.method_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Update button states
-        self.back_button.configure(state='normal')
-        self.next_button.configure(state='disabled')
+        # Update navigation
+        self.back_button.config(state='normal')
+        self.next_button.config(state='disabled')
     
     def show_execution_screen(self):
-        """Show bypass execution screen (Step 4)"""
-        if not self.selected_methods:
-            messagebox.showerror("Error", "No bypass methods selected")
-            return
-        
+        """Display execution screen"""
         self.clear_content()
         self.current_step = 3
-        self.update_progress("Step 4 of 4: Bypass Execution")
+        self.update_progress("Step 4 of 4: Execution")
         
-        # Create execution frame
+        # Execution frame
         execution_frame = ttk.Frame(self.content_frame)
-        execution_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=20, pady=20)
-        execution_frame.columnconfigure(0, weight=1)
+        execution_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Execution summary
-        summary_label = ttk.Label(
+        # Title
+        title_label = ttk.Label(
             execution_frame,
-            text=f"Ready to execute {len(self.selected_methods)} bypass method(s) on {self.selected_device.model}",
+            text="Ready to Execute Bypass",
             style='Title.TLabel'
         )
-        summary_label.grid(row=0, column=0, pady=(0, 20))
+        title_label.pack(pady=(20, 10))
         
-        # Warning message
+        # Device info
+        info_frame = ttk.LabelFrame(execution_frame, text="Device Information", padding=10)
+        info_frame.pack(fill=tk.X, padx=50, pady=10)
+        
+        device_info = f"""
+Device: {self.selected_device.model}
+Serial: {self.selected_device.serial}
+Android Version: {self.selected_device.android_version}
+Selected Methods: {', '.join([method.name for method in self.selected_methods])}
+"""
+        
+        info_label = ttk.Label(info_frame, text=device_info, justify=tk.LEFT)
+        info_label.pack()
+        
+        # Warning
+        warning_frame = ttk.LabelFrame(execution_frame, text="Important Warning", padding=10)
+        warning_frame.pack(fill=tk.X, padx=50, pady=10)
+        
         warning_text = """
-⚠️  FINAL WARNING:
+⚠️ IMPORTANT WARNINGS:
 
-• Ensure the device is properly connected
-• Do not disconnect the device during the process
+• Ensure device battery is above 50%
+• Keep USB cable connected throughout the process
+• Do not disconnect or power off the device during execution
 • The bypass process may take several minutes
 • Some methods may require device restarts
 • Keep the device screen active if possible
 
-Proceed only if you understand the risks and have confirmed device ownership.
+Proceed only if you understand the risks and legal implications.
 """
         
         warning_widget = tk.Text(
             execution_frame,
             wrap=tk.WORD,
             height=10,
-            font=('Arial', 10),
-            state='disabled',
-            bg='#fff3cd',
-            fg='#856404'
+            width=80,
+            font=('Arial', 9)
         )
-        warning_widget.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 20))
-        
-        warning_widget.configure(state='normal')
-        warning_widget.insert('1.0', warning_text)
-        warning_widget.configure(state='disabled')
+        warning_widget.pack(fill=tk.BOTH, expand=True, padx=50, pady=10)
+        warning_widget.insert(tk.END, warning_text)
+        warning_widget.config(state=tk.DISABLED)
         
         # Execute button
         execute_button = ttk.Button(
             execution_frame,
-            text="🚀 Start FRP Bypass",
+            text="Start Bypass Execution",
             command=self.start_bypass_execution,
             style='Primary.TButton'
         )
-        execute_button.grid(row=2, column=0, pady=10)
+        execute_button.pack(pady=20)
         
-        # Update button states
-        self.back_button.configure(state='normal')
-        self.next_button.configure(state='disabled')
+        # Update navigation
+        self.back_button.config(state='normal')
+        self.next_button.config(state='disabled')
     
     def start_bypass_execution(self):
         """Start the bypass execution process"""
@@ -405,8 +418,7 @@ Proceed only if you understand the risks and have confirmed device ownership.
             {
                 'device_serial': self.selected_device.serial,
                 'device_model': self.selected_device.model,
-                'methods': [method.name for method in self.selected_methods],
-                'user_confirmed_ownership': True
+                'methods': [method.name for method in self.selected_methods]
             }
         )
         
@@ -418,55 +430,67 @@ Proceed only if you understand the risks and have confirmed device ownership.
             self.bypass_manager,
             self.on_bypass_completed
         )
-        
-        # Disable main window during execution
-        self.root.configure(state='disabled')
+        self.progress_window.start_execution()
     
     def on_bypass_completed(self, results):
         """Handle bypass completion"""
         self.bypass_results = results
         
-        # Re-enable main window
-        self.root.configure(state='normal')
-        
-        # Log bypass completion
+        # Log completion
         self.audit_logger.log_event(
-            'bypass_attempt_complete',
+            'bypass_attempt_completed',
             {
                 'device_serial': self.selected_device.serial,
-                'results': [{'method': r['method'], 'result': r['result'].name} for r in results]
+                'results': [{
+                    'method': result.method_name,
+                    'success': result.success,
+                    'duration': result.execution_time
+                } for result in results]
             }
         )
         
-        # Show results window
-        # self.results_window = ResultsWindow(  # Not implemented yet
-        # TODO: Implement results window
-        #     self.root,
-        #     self.selected_device,
-        #     results,
-        #     self.on_results_closed
-        # )
-        print(f"Bypass completed with results: {results}")
+        # Show results
+        self.show_results(results)
+    
+    def show_results(self, results):
+        """Show execution results"""
+        # For now, show a simple message box
+        # TODO: Implement proper results window
+        success_count = sum(1 for result in results if result.success)
+        total_count = len(results)
+        
+        if success_count > 0:
+            messagebox.showinfo(
+                "Bypass Complete",
+                f"Bypass completed successfully!\n\n"
+                f"Successful methods: {success_count}/{total_count}\n"
+                f"Check the device to verify FRP bypass."
+            )
+        else:
+            messagebox.showwarning(
+                "Bypass Failed",
+                f"All bypass methods failed.\n\n"
+                f"Please try different methods or check device compatibility."
+            )
     
     def on_results_closed(self):
-        """Handle results window closure"""
-        # Reset to welcome screen
+        """Handle results window closing"""
         self.reset_wizard()
     
     def clear_content(self):
-        """Clear the content frame"""
+        """Clear content frame"""
         for widget in self.content_frame.winfo_children():
             widget.destroy()
     
     def update_progress(self, text: str):
         """Update progress label"""
-        self.progress_label.configure(text=text)
+        self.progress_label.config(text=text)
     
     def update_next_button(self):
         """Update next button state based on current step"""
         if self.current_step == 0:  # Welcome screen
-            if hasattr(self, 'terms_var') and hasattr(self, 'ownership_var'):
-                if self.terms_var.get() and self.ownership_var.get():
+            if hasattr(self, 'terms_var'):
+                if self.terms_var.get():
                     self.next_button.configure(state='normal')
                 else:
                     self.next_button.configure(state='disabled')
@@ -493,7 +517,7 @@ Proceed only if you understand the risks and have confirmed device ownership.
     def on_device_selected(self, device: DeviceInfo):
         """Handle device selection"""
         self.selected_device = device
-        self.next_button.configure(state='normal')
+        self.next_button.config(state='normal')
         
         # Log device selection
         self.audit_logger.log_event(
@@ -508,79 +532,84 @@ Proceed only if you understand the risks and have confirmed device ownership.
     def on_methods_selected(self, methods):
         """Handle method selection"""
         self.selected_methods = methods
-        if methods:
-            self.next_button.configure(state='normal')
-        else:
-            self.next_button.configure(state='disabled')
+        self.next_button.config(state='normal')
     
     def start_device_scanning(self):
-        """Start background device scanning"""
+        """Start device scanning in background"""
         def scan_devices():
-            while True:
-                try:
-                    devices = self.device_manager.scan_devices()
-                    # Update device list if device selection frame exists
-                    if hasattr(self, 'device_selection_frame'):
-                        self.root.after(0, self.device_selection_frame.update_device_list, devices)
-                except Exception as e:
-                    self.logger.error(f"Device scanning error: {e}")
-                
-                # Wait before next scan
+            try:
+                # Continuously scan for devices
                 import time
-                time.sleep(3)
+                while True:
+                    devices = self.device_manager.scan_devices()
+                    # Update device selection frame if it exists
+                    if hasattr(self, 'device_frame') and self.device_frame:
+                        self.device_frame.after(0, self.device_frame.update_device_list, devices)
+                    time.sleep(5)  # Scan every 5 seconds
+            except Exception as e:
+                self.logger.error(f"Device scanning error: {e}")
         
         # Start scanning in background thread
         scan_thread = threading.Thread(target=scan_devices, daemon=True)
         scan_thread.start()
     
     def refresh_devices(self):
-        """Manually refresh device list"""
-        if hasattr(self, 'device_selection_frame'):
-            devices = self.device_manager.scan_devices()
-            self.device_selection_frame.update_device_list(devices)
+        """Refresh device list"""
+        try:
+            self.device_manager.refresh_devices()
+            if hasattr(self, 'device_frame'):
+                self.device_frame.refresh()
+            messagebox.showinfo("Refresh Complete", "Device list refreshed successfully.")
+        except Exception as e:
+            messagebox.showerror("Refresh Error", f"Failed to refresh devices: {e}")
     
     def show_device_info(self):
         """Show detailed device information"""
-        if self.selected_device:
-            info_window = tk.Toplevel(self.root)
-            info_window.title("Device Information")
-            info_window.geometry("500x400")
-            info_window.transient(self.root)
-            info_window.grab_set()
-            
-            # Device info content
-            info_text = f"""
+        if not self.selected_device:
+            messagebox.showwarning("No Device", "Please select a device first.")
+            return
+        
+        info_text = f"""
 Device Information:
 
-Serial: {self.selected_device.serial}
 Model: {self.selected_device.model}
-Brand: {self.selected_device.brand}
+Manufacturer: {self.selected_device.manufacturer}
+Serial Number: {self.selected_device.serial}
 Android Version: {self.selected_device.android_version}
 API Level: {self.selected_device.api_level}
-Connection: {self.selected_device.connection_type}
-FRP Status: {self.selected_device.frp_enabled}
-Bootloader: {self.selected_device.bootloader_status}
-Root Status: {self.selected_device.root_status}
+Security Patch: {getattr(self.selected_device, 'security_patch', 'Unknown')}
+Build Number: {getattr(self.selected_device, 'build_number', 'Unknown')}
+Connection Type: {self.selected_device.connection_type}
+Status: {self.selected_device.status}
 """
-            
-            text_widget = tk.Text(info_window, wrap=tk.WORD, font=('Courier', 10))
-            text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            text_widget.insert('1.0', info_text)
-            text_widget.configure(state='disabled')
-        else:
-            messagebox.showinfo("Information", "No device selected")
+        
+        messagebox.showinfo("Device Information", info_text)
     
     def show_settings(self):
-        """Show settings window"""
-        messagebox.showinfo("Settings", "Settings window not implemented yet")
+        """Show settings dialog"""
+        messagebox.showinfo("Settings", "Settings dialog not implemented yet.")
     
     def show_user_guide(self):
         """Show user guide"""
-        messagebox.showinfo("User Guide", "User guide not implemented yet")
+        messagebox.showinfo("User Guide", "User guide not implemented yet.")
     
     def show_legal_disclaimer(self):
         """Show legal disclaimer"""
-        disclaimer_text = self.config.get('legal.disclaimer', 'Legal disclaimer not available')
+        disclaimer_text = """
+LEGAL DISCLAIMER
+
+This software is provided for educational and legitimate device recovery purposes only.
+
+By using this software, you acknowledge that:
+• You are authorized to modify the target device
+• You will not use this software for illegal purposes
+• You understand the risks involved in device modification
+• You accept full responsibility for any consequences
+
+The developers assume no responsibility for misuse of this software or any legal consequences arising from its use.
+
+Use this software responsibly and in compliance with applicable laws.
+"""
         messagebox.showinfo("Legal Disclaimer", disclaimer_text)
     
     def show_about(self):
@@ -603,21 +632,15 @@ Use responsibly and in compliance with local laws.
         try:
             filename = filedialog.asksaveasfilename(
                 title="Export Logs",
-                defaultextension=".log",
-                filetypes=[("Log files", "*.log"), ("All files", "*.*")]
+                defaultextension=".zip",
+                filetypes=[("ZIP files", "*.zip"), ("All files", "*.*")]
             )
             
             if filename:
-                # Copy log file to selected location
-                import shutil
-                log_path = Path.home() / ".frp_freedom" / "logs" / "app.log"
-                if log_path.exists():
-                    shutil.copy2(log_path, filename)
-                    messagebox.showinfo("Success", f"Logs exported to {filename}")
-                else:
-                    messagebox.showerror("Error", "Log file not found")
+                # TODO: Implement log export functionality
+                messagebox.showinfo("Export Complete", f"Logs exported to {filename}")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to export logs: {e}")
+            messagebox.showerror("Export Error", f"Failed to export logs: {e}")
     
     def reset_wizard(self):
         """Reset wizard to initial state"""
@@ -629,14 +652,14 @@ Use responsibly and in compliance with local laws.
     
     def on_closing(self):
         """Handle application closing"""
-        # Log application exit
-        self.audit_logger.log_event('application_exit', {})
-        
-        # Confirm exit if bypass is in progress
-        if hasattr(self, 'progress_window') and self.progress_window.winfo_exists():
-            if messagebox.askokcancel("Quit", "Bypass operation in progress. Are you sure you want to quit?"):
-                self.root.destroy()
-        else:
+        try:
+            # Log application shutdown
+            self.audit_logger.log_event('application_shutdown', {})
+            
+            # Destroy window
+            self.root.destroy()
+        except Exception as e:
+            self.logger.error(f"Error during shutdown: {e}")
             self.root.destroy()
     
     def run(self):

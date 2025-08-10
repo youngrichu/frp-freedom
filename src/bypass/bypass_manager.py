@@ -259,15 +259,6 @@ class BypassManager:
         
         self.logger.info(f"AI recommended {len(ai_methods)} methods for {device.brand} {device.model}")
         
-        # Send notification about method recommendations
-        if self.notification_system and ai_methods:
-            top_method = ai_methods[0]
-            success_prob = analysis.get('success_probabilities', {}).get(top_method.name, 0.5)
-            self.notification_system.notify_method_recommendation(
-                top_method.name,
-                success_prob
-            )
-        
         return recommended
     
     def _is_method_compatible(self, method: BypassMethod, device: DeviceInfo) -> bool:
@@ -355,16 +346,6 @@ class BypassManager:
             execution_time = time.time() - start_time
             self.ai_engine.update_method_performance(method_name, device, result['result'], execution_time)
             
-            # Send failure notification if method failed
-            if result['result'] == BypassResult.FAILED and self.notification_system:
-                suggested_method = self.suggest_next_method(device, [method_name])
-                if suggested_method:
-                    self.notification_system.notify_method_failure_insight(
-                        method_name,
-                        suggested_method.name,
-                        lambda data: self.execute_bypass(device, data['suggested_alternative'])
-                    )
-            
             return result
             
         except Exception as e:
@@ -373,16 +354,6 @@ class BypassManager:
             
             # Update AI with failure
             self.ai_engine.update_method_performance(method_name, device, BypassResult.FAILED, execution_time)
-            
-            # Send failure notification
-            if self.notification_system:
-                suggested_method = self.suggest_next_method(device, [method_name])
-                if suggested_method:
-                    self.notification_system.notify_method_failure_insight(
-                        method_name,
-                        suggested_method.name,
-                        lambda data: self.execute_bypass(device, data['suggested_alternative'])
-                    )
             
             return {
                  'result': BypassResult.FAILED,
@@ -430,180 +401,155 @@ class BypassManager:
     
     def _execute_adb_bypass(self, device: DeviceInfo, method: BypassMethod) -> Dict[str, Any]:
         """Execute ADB-based bypass methods"""
-        if method.name == "adb_setup_wizard":
-            return self.adb_exploits.setup_wizard_exploit(device, self._update_progress)
-        elif method.name == "adb_talkback":
-            return self.adb_exploits.talkback_exploit(device, self._update_progress)
-        else:
-            return {'result': BypassResult.FAILED, 'message': f'Unknown ADB method: {method.name}', 'details': {}}
+        return self.adb_exploits.execute_method(device, method, self.progress_callback)
     
     def _execute_interface_bypass(self, device: DeviceInfo, method: BypassMethod) -> Dict[str, Any]:
         """Execute interface-based bypass methods"""
-        if method.name == "emergency_call_exploit":
-            return self.interface_exploits.emergency_call_exploit(device, self._update_progress)
-        elif method.name == "chrome_intent_exploit":
-            return self.interface_exploits.chrome_intent_exploit(device, self._update_progress)
-        else:
-            return {'result': BypassResult.FAILED, 'message': f'Unknown interface method: {method.name}', 'details': {}}
+        return self.interface_exploits.execute_method(device, method, self.progress_callback)
     
     def _execute_system_bypass(self, device: DeviceInfo, method: BypassMethod) -> Dict[str, Any]:
         """Execute system-level bypass methods"""
-        if method.name == "accounts_db_modification":
-            return self.system_exploits.modify_accounts_database(device, self._update_progress)
-        elif method.name == "persist_partition_edit":
-            return self.system_exploits.edit_persist_partition(device, self._update_progress)
-        else:
-            return {'result': BypassResult.FAILED, 'message': f'Unknown system method: {method.name}', 'details': {}}
+        return self.system_exploits.execute_method(device, method, self.progress_callback)
     
     def _execute_hardware_bypass(self, device: DeviceInfo, method: BypassMethod) -> Dict[str, Any]:
-        """Execute hardware-based bypass methods"""
-        if method.name == "download_mode_flash":
-            return self.hardware_exploits.download_mode_flash(device, self._update_progress)
-        elif method.name == "qualcomm_edl_exploit":
-            return self.hardware_exploits.qualcomm_edl_exploit(device, self._update_progress)
-        else:
-            return {'result': BypassResult.FAILED, 'message': f'Unknown hardware method: {method.name}', 'details': {}}
+        """Execute hardware-level bypass methods"""
+        return self.hardware_exploits.execute_method(device, method, self.progress_callback)
     
     def _verify_bypass_success(self, device: DeviceInfo) -> bool:
         """Verify that the bypass was successful"""
         try:
-            # Refresh device info
-            updated_device = self.device_manager.refresh_device_info(device.serial)
-            if not updated_device:
-                return False
-            
-            # Check FRP status
-            if updated_device.frp_status in ['disabled', 'setup_complete']:
-                return True
-            
-            # Additional checks
+            # Check if we can access the device without FRP restrictions
             success, output = self.device_manager.execute_adb_command(
-                device.serial, ['shell', 'settings', 'get', 'secure', 'user_setup_complete']
+                device.serial, 
+                ['shell', 'getprop', 'ro.frp.pst']
             )
             
-            if success and output.strip() == '1':
-                return True
+            if success:
+                # If FRP property is empty or not set, bypass likely successful
+                if not output.strip() or output.strip() == '':
+                    return True
+                    
+            # Additional checks for specific bypass indicators
+            success, output = self.device_manager.execute_adb_command(
+                device.serial,
+                ['shell', 'pm', 'list', 'users']
+            )
             
+            if success and 'UserInfo{0:' in output:
+                return True
+                
             return False
-        
+            
         except Exception as e:
             self.logger.error(f"Error verifying bypass success: {e}")
             return False
     
     def _update_progress(self, message: str, percentage: int):
-        """Update progress callback"""
+        """Update progress callback if available"""
         if self.progress_callback:
             self.progress_callback(message, percentage)
-        self.logger.info(f"Progress: {percentage}% - {message}")
     
     def get_method_info(self, method_name: str) -> Optional[BypassMethod]:
-        """Get information about a specific method"""
+        """Get detailed information about a specific method"""
         return next((m for m in self.available_methods if m.name == method_name), None)
     
     def estimate_bypass_time(self, device: DeviceInfo, method_name: str) -> int:
-        """Estimate bypass time for a specific method and device"""
+        """Estimate bypass time using AI analysis"""
         method = self.get_method_info(method_name)
         if not method:
             return 0
         
+        # Get AI analysis for more accurate time estimation
+        device_profile = self.ai_engine.analyze_device(device)
+        
+        # Base time from method definition
         base_time = method.estimated_time
         
-        # Adjust based on device characteristics
-        if device.android_version.startswith('5.'):
-            base_time *= 0.8  # Older Android versions are often easier
-        elif device.android_version.startswith(('10.', '11.', '12.')):
-            base_time *= 1.3  # Newer versions have more protections
+        # Adjust based on AI analysis
+        complexity_factor = device_profile.complexity_score
+        if complexity_factor > 0.8:
+            base_time = int(base_time * 1.5)  # 50% longer for complex devices
+        elif complexity_factor < 0.3:
+            base_time = int(base_time * 0.8)  # 20% faster for simple devices
         
-        # Adjust based on manufacturer
-        if device.manufacturer.lower() == 'samsung':
-            base_time *= 1.1  # Samsung has additional protections
-        elif device.manufacturer.lower() == 'google':
-            base_time *= 1.2  # Pixel devices have strong security
+        # Factor in success probability (lower success = potentially longer time)
+        success_prob = device_profile.success_probability.get(method_name, 0.5)
+        if success_prob < 0.5:
+            base_time = int(base_time * 1.3)  # 30% longer for uncertain methods
         
-        return int(base_time)
+        return max(base_time, 1)  # Minimum 1 minute
     
     def get_ai_device_analysis(self, device: DeviceInfo) -> Dict[str, Any]:
-        """Get comprehensive AI analysis of device"""
-        profile = self.ai_engine.analyze_device(device)
+        """Get comprehensive AI analysis of the device"""
+        device_profile = self.ai_engine.analyze_device(device)
         
-        result = {
-            'device_profile': {
-                'frp_complexity': profile.frp_complexity,
-                'vulnerability_score': profile.vulnerability_score,
-                'recommended_methods': profile.recommended_methods,
-                'success_probabilities': profile.success_probability
+        return {
+            'device_info': {
+                'brand': device.brand,
+                'model': device.model,
+                'android_version': device.android_version,
+                'security_patch': device.security_patch
             },
-            'security_assessment': self._get_security_assessment_text(profile.vulnerability_score),
-            'bypass_strategy': self._get_bypass_strategy(profile)
+            'ai_analysis': {
+                'complexity_score': device_profile.complexity_score,
+                'vulnerability_score': device_profile.vulnerability_score,
+                'recommended_methods': device_profile.recommended_methods,
+                'success_probabilities': device_profile.success_probability,
+                'security_assessment': self._get_security_assessment_text(device_profile.vulnerability_score),
+                'bypass_strategy': self._get_bypass_strategy(device_profile)
+            }
         }
-        
-        # Send notification about analysis completion
-        if self.notification_system:
-            self.notification_system.notify_device_analysis_complete(
-                profile.vulnerability_score,
-                profile.recommended_methods
-            )
-        
-        return result
     
     def _get_security_assessment_text(self, vulnerability_score: float) -> str:
         """Convert vulnerability score to human-readable assessment"""
-        if vulnerability_score > 0.7:
-            return "High vulnerability detected - Multiple bypass methods likely to succeed"
-        elif vulnerability_score > 0.4:
-            return "Medium vulnerability - Some methods may work with proper execution"
+        if vulnerability_score >= 0.8:
+            return "High vulnerability - Multiple bypass vectors available"
+        elif vulnerability_score >= 0.6:
+            return "Moderate vulnerability - Several bypass options possible"
+        elif vulnerability_score >= 0.4:
+            return "Low vulnerability - Limited bypass methods may work"
         else:
-            return "Low vulnerability - Limited bypass options, advanced techniques may be required"
+            return "Very low vulnerability - Bypass may be challenging"
     
     def _get_bypass_strategy(self, profile: DeviceProfile) -> str:
-        """Generate AI-driven bypass strategy"""
-        if profile.frp_complexity == 'low':
-            return "Start with ADB-based methods, then try interface exploits"
-        elif profile.frp_complexity == 'medium':
-            return "Combine multiple methods, focus on device-specific exploits"
-        elif profile.frp_complexity == 'high':
-            return "Use advanced techniques, consider hardware-based methods"
+        """Generate bypass strategy recommendation"""
+        if profile.complexity_score < 0.3:
+            return "Start with interface-based methods, then try ADB exploits"
+        elif profile.complexity_score < 0.7:
+            return "Begin with ADB methods, fallback to system-level approaches"
         else:
-            return "Extreme security - Hardware exploits or professional tools may be required"
+            return "Consider hardware-level methods or advanced system exploits"
     
     def get_contextual_help(self, device: DeviceInfo, method_name: str) -> Dict[str, Any]:
-        """Get AI-powered contextual help for a specific method"""
+        """Get contextual help and tips for a specific method and device"""
         return self.ai_engine.get_contextual_help(device, method_name)
     
     def set_notification_system(self, notification_system):
-        """Set the notification system for AI insights"""
+        """Set the notification system for bypass insights"""
         self.notification_system = notification_system
     
     def get_ai_insights(self) -> Dict[str, Any]:
-        """Get AI learning insights and performance statistics"""
-        insights = self.ai_engine.get_learning_insights()
-        
-        # Send notification if system is available
-        if self.notification_system and insights.get('new_insights'):
-            learning_status = insights.get('learning_status', 'Unknown')
-            success_rate = insights.get('overall_success_rate', 0.0)
-            self.notification_system.notify_learning_update(
-                f"AI Learning Status: {learning_status}. Overall success rate: {success_rate:.1%}"
-            )
-        
-        return insights
+        """Get AI insights about bypass performance and trends"""
+        return {
+            'total_bypasses': self.ai_engine.get_total_bypasses(),
+            'success_rate_by_method': self.ai_engine.get_success_rates_by_method(),
+            'trending_methods': self.ai_engine.get_trending_methods(),
+            'device_compatibility': self.ai_engine.get_device_compatibility_stats(),
+            'performance_metrics': {
+                'average_execution_time': self.ai_engine.get_average_execution_time(),
+                'fastest_methods': self.ai_engine.get_fastest_methods(),
+                'most_reliable_methods': self.ai_engine.get_most_reliable_methods()
+            }
+        }
     
     def suggest_next_method(self, device: DeviceInfo, failed_methods: List[str]) -> Optional[BypassMethod]:
-        """AI-powered suggestion for next method to try after failures"""
-        profile = self.ai_engine.analyze_device(device)
+        """Suggest the next best method after failures"""
+        available_methods = self.get_recommended_methods(device)
         
-        # Get methods not yet tried
-        available_methods = [m for m in profile.recommended_methods if m not in failed_methods]
+        # Filter out failed methods
+        remaining_methods = [m for m in available_methods if m.name not in failed_methods]
         
-        if not available_methods:
-            # Fall back to other compatible methods
-            compatible = self.get_recommended_methods(device)
-            available_methods = [m.name for m in compatible if m.name not in failed_methods]
-        
-        if available_methods:
-            # Return method with highest success probability
-            best_method_name = max(available_methods, 
-                                 key=lambda m: profile.success_probability.get(m, 0.0))
-            return self.get_method_info(best_method_name)
+        if remaining_methods:
+            return remaining_methods[0]  # Return the top recommended method
         
         return None

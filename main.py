@@ -4,7 +4,7 @@ FRP Freedom - Factory Reset Protection Bypass Tool
 Main application entry point
 
 This tool is designed for legitimate device recovery purposes only.
-Users must verify device ownership before proceeding with any bypass operations.
+Users must ensure they have legal authorization before proceeding with any bypass operations.
 """
 
 import sys

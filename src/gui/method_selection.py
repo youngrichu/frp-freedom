@@ -1,567 +1,456 @@
 #!/usr/bin/env python3
 """
 Method Selection Frame for FRP Freedom
-Implements the bypass method selection step of the wizard
+Implements the method selection step of the wizard with AI recommendations
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+import threading
 import logging
-from typing import List, Callable, Dict, Any
+from typing import List, Callable, Optional
 
 from ..core.device_manager import DeviceInfo
-from ..bypass.bypass_manager import BypassManager, BypassMethod
+from ..bypass.bypass_manager import BypassManager
+from ..bypass.types import BypassMethod
+from ..ai import AIEngine
 
 class MethodSelectionFrame(ttk.Frame):
-    """Frame for bypass method selection"""
+    """Frame for bypass method selection with AI recommendations"""
     
-    def __init__(self, parent, bypass_manager: BypassManager, device: DeviceInfo, selection_callback: Callable[[List[BypassMethod]], None]):
+    def __init__(self, parent, device: DeviceInfo, bypass_manager: BypassManager, 
+                 selection_callback: Callable[[List[BypassMethod]], None]):
         super().__init__(parent)
-        self.bypass_manager = bypass_manager
         self.device = device
+        self.bypass_manager = bypass_manager
         self.selection_callback = selection_callback
         self.logger = logging.getLogger(__name__)
         
         self.available_methods: List[BypassMethod] = []
         self.selected_methods: List[BypassMethod] = []
-        self.method_vars: Dict[str, tk.BooleanVar] = {}
+        self.ai_analysis = None
         
+        # Check if device is None
+        if self.device is None:
+            self.show_no_device_error()
+            return
+            
         self.setup_widgets()
-        self.load_available_methods()
+        self.load_methods()
     
     def setup_widgets(self):
-        """Setup the method selection widgets"""
-        # Configure grid
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        """Setup the method selection interface"""
+        # Configure grid weights
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
         
-        # Header
+        # Header frame
         header_frame = ttk.Frame(self)
-        header_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 20))
-        header_frame.columnconfigure(0, weight=1)
-        
-        title_label = ttk.Label(
-            header_frame,
-            text="Select Bypass Methods",
-            font=('Arial', 14, 'bold')
-        )
-        title_label.grid(row=0, column=0, sticky=tk.W)
+        header_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=10, pady=10)
+        header_frame.grid_columnconfigure(1, weight=1)
         
         # Device info
-        device_info_label = ttk.Label(
-            header_frame,
-            text=f"Device: {self.device.brand} {self.device.model} (Android {self.device.android_version})",
-            font=('Arial', 10)
-        )
-        device_info_label.grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        device_label = ttk.Label(header_frame, text="Selected Device:", font=('TkDefaultFont', 10, 'bold'))
+        device_label.grid(row=0, column=0, sticky=tk.W)
         
-        # AI Analysis button
-        ai_analysis_button = ttk.Button(
-            header_frame,
-            text="🤖 AI Device Analysis",
-            command=self.show_ai_analysis
-        )
-        ai_analysis_button.grid(row=2, column=0, sticky=tk.W, pady=(5, 0))
+        device_info = f"{self.device.brand} {self.device.model} (Android {self.device.android_version})"
+        device_info_label = ttk.Label(header_frame, text=device_info)
+        device_info_label.grid(row=0, column=1, sticky=tk.W, padx=(10, 0))
         
-        # Instructions
-        instructions_label = ttk.Label(
-            header_frame,
-            text="Select one or more bypass methods. AI-recommended methods are shown first.",
-            font=('Arial', 10)
-        )
-        instructions_label.grid(row=3, column=0, sticky=tk.W, pady=(5, 0))
+        # AI analysis button
+        self.ai_button = ttk.Button(header_frame, text="Get AI Analysis", command=self.get_ai_analysis)
+        self.ai_button.grid(row=0, column=2, padx=(10, 0))
         
-        # Main content area with notebook
-        self.notebook = ttk.Notebook(self)
-        self.notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Main content frame
+        content_frame = ttk.Frame(self)
+        content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=(0, 10))
+        content_frame.grid_columnconfigure(0, weight=1)
+        content_frame.grid_rowconfigure(0, weight=1)
         
-        # Create tabs for different method categories
-        self.create_ai_recommended_tab()
-        self.create_adb_tab()
-        self.create_interface_tab()
-        self.create_system_tab()
-        self.create_hardware_tab()
+        # Create notebook for different views
+        self.notebook = ttk.Notebook(content_frame)
+        self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Footer with selection summary and buttons
-        self.create_footer()
-    
-    def create_ai_recommended_tab(self):
-        """Create the AI-recommended methods tab"""
-        self.recommended_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.recommended_frame, text="🤖 AI Recommended")
+        # Method list tab
+        self.create_method_list_tab()
         
-        self.recommended_frame.columnconfigure(0, weight=1)
-        self.recommended_frame.rowconfigure(2, weight=1)
+        # AI recommendations tab
+        self.create_ai_recommendations_tab()
         
-        # AI Analysis summary
-        self.ai_summary_frame = ttk.LabelFrame(self.recommended_frame, text="AI Device Analysis")
-        self.ai_summary_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        self.ai_summary_frame.columnconfigure(0, weight=1)
+        # Method details tab
+        self.create_method_details_tab()
         
-        self.ai_summary_text = tk.Text(self.ai_summary_frame, height=4, wrap=tk.WORD, font=('Arial', 9))
-        self.ai_summary_text.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
-        self.ai_summary_text.configure(state='disabled')
+        # Bottom frame for actions
+        bottom_frame = ttk.Frame(content_frame)
+        bottom_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
         
-        # Info label
-        info_label = ttk.Label(
-            self.recommended_frame,
-            text="AI-recommended methods based on device analysis and success patterns:",
-            font=('Arial', 10, 'bold')
-        )
-        info_label.grid(row=1, column=0, sticky=tk.W, pady=(0, 10))
+        # Selection info
+        self.selection_label = ttk.Label(bottom_frame, text="No methods selected")
+        self.selection_label.pack(side=tk.LEFT)
         
-        # Scrollable frame for methods
-        self.recommended_scroll_frame = self.create_scrollable_frame(self.recommended_frame)
-        self.recommended_scroll_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Action buttons
+        button_frame = ttk.Frame(bottom_frame)
+        button_frame.pack(side=tk.RIGHT)
         
-        # Load AI analysis
-        self.load_ai_analysis()
-    
-    def create_adb_tab(self):
-        """Create the ADB methods tab"""
-        self.adb_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.adb_frame, text="🔧 ADB Methods")
+        self.clear_button = ttk.Button(button_frame, text="Clear Selection", command=self.clear_selection)
+        self.clear_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        self.adb_frame.columnconfigure(0, weight=1)
-        self.adb_frame.rowconfigure(1, weight=1)
+        self.select_all_button = ttk.Button(button_frame, text="Select Recommended", command=self.select_recommended)
+        self.select_all_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        # Info label
-        info_label = ttk.Label(
-            self.adb_frame,
-            text="ADB-based bypass methods (requires USB debugging):",
-            font=('Arial', 10, 'bold')
-        )
-        info_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
-        
-        # Scrollable frame for methods
-        self.adb_scroll_frame = self.create_scrollable_frame(self.adb_frame)
-        self.adb_scroll_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-    
-    def create_interface_tab(self):
-        """Create the interface methods tab"""
-        self.interface_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.interface_frame, text="📱 Interface Methods")
-        
-        self.interface_frame.columnconfigure(0, weight=1)
-        self.interface_frame.rowconfigure(1, weight=1)
-        
-        # Info label
-        info_label = ttk.Label(
-            self.interface_frame,
-            text="UI-based bypass methods (exploits interface vulnerabilities):",
-            font=('Arial', 10, 'bold')
-        )
-        info_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
-        
-        # Scrollable frame for methods
-        self.interface_scroll_frame = self.create_scrollable_frame(self.interface_frame)
-        self.interface_scroll_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-    
-    def create_system_tab(self):
-        """Create the system methods tab"""
-        self.system_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.system_frame, text="⚙️ System Methods")
-        
-        self.system_frame.columnconfigure(0, weight=1)
-        self.system_frame.rowconfigure(1, weight=1)
-        
-        # Info label
-        info_label = ttk.Label(
-            self.system_frame,
-            text="System-level bypass methods (requires root or unlocked bootloader):",
-            font=('Arial', 10, 'bold')
-        )
-        info_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
-        
-        # Scrollable frame for methods
-        self.system_scroll_frame = self.create_scrollable_frame(self.system_frame)
-        self.system_scroll_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-    
-    def create_hardware_tab(self):
-        """Create the hardware methods tab"""
-        self.hardware_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.hardware_frame, text="🔩 Hardware Methods")
-        
-        self.hardware_frame.columnconfigure(0, weight=1)
-        self.hardware_frame.rowconfigure(1, weight=1)
-        
-        # Info label
-        info_label = ttk.Label(
-            self.hardware_frame,
-            text="Hardware-based bypass methods (chipset-specific exploits):",
-            font=('Arial', 10, 'bold')
-        )
-        info_label.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
-        
-        # Scrollable frame for methods
-        self.hardware_scroll_frame = self.create_scrollable_frame(self.hardware_frame)
-        self.hardware_scroll_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-    
-    def create_scrollable_frame(self, parent):
-        """Create a scrollable frame for method lists"""
-        # Create canvas and scrollbar
-        canvas = tk.Canvas(parent, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Grid the canvas and scrollbar
-        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        
-        # Configure parent grid
-        parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(0, weight=1)
-        
-        return scrollable_frame
-    
-    def create_footer(self):
-        """Create footer with selection summary and buttons"""
-        footer_frame = ttk.Frame(self)
-        footer_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(20, 0))
-        footer_frame.columnconfigure(1, weight=1)
-        
-        # Selection summary
-        self.selection_label = ttk.Label(
-            footer_frame,
-            text="No methods selected",
-            font=('Arial', 10)
-        )
-        self.selection_label.grid(row=0, column=0, sticky=tk.W)
-        
-        # Buttons
-        button_frame = ttk.Frame(footer_frame)
-        button_frame.grid(row=0, column=2, sticky=tk.E)
-        
-        clear_button = ttk.Button(
-            button_frame,
-            text="Clear All",
-            command=self.clear_selection
-        )
-        clear_button.pack(side=tk.LEFT, padx=(0, 10))
-        
-        auto_select_button = ttk.Button(
-            button_frame,
-            text="Auto Select",
-            command=self.auto_select_methods
-        )
-        auto_select_button.pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.confirm_button = ttk.Button(
-            button_frame,
-            text="Confirm Selection",
-            command=self.confirm_selection,
-            state='disabled'
-        )
+        self.confirm_button = ttk.Button(button_frame, text="Confirm Selection", command=self.confirm_selection)
         self.confirm_button.pack(side=tk.LEFT)
     
-    def load_available_methods(self):
-        """Load available bypass methods for the device"""
+    def create_method_list_tab(self):
+        """Create the method list tab"""
+        list_frame = ttk.Frame(self.notebook)
+        self.notebook.add(list_frame, text="Available Methods")
+        
+        # Configure grid
+        list_frame.grid_columnconfigure(0, weight=1)
+        list_frame.grid_rowconfigure(1, weight=1)
+        
+        # Instructions
+        instructions = ttk.Label(list_frame, text="Select bypass methods to attempt (in order):")
+        instructions.grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        
+        # Method treeview
+        columns = ('Method', 'Category', 'Risk', 'Success Rate', 'Time', 'Description')
+        self.method_tree = ttk.Treeview(list_frame, columns=columns, show='headings', selectmode='extended')
+        
+        # Configure columns
+        self.method_tree.heading('Method', text='Method')
+        self.method_tree.heading('Category', text='Category')
+        self.method_tree.heading('Risk', text='Risk Level')
+        self.method_tree.heading('Success Rate', text='Success Rate')
+        self.method_tree.heading('Time', text='Est. Time (min)')
+        self.method_tree.heading('Description', text='Description')
+        
+        self.method_tree.column('Method', width=150)
+        self.method_tree.column('Category', width=80)
+        self.method_tree.column('Risk', width=80)
+        self.method_tree.column('Success Rate', width=100)
+        self.method_tree.column('Time', width=100)
+        self.method_tree.column('Description', width=300)
+        
+        self.method_tree.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.method_tree.yview)
+        scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S), pady=5)
+        self.method_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Bind events
+        self.method_tree.bind('<<TreeviewSelect>>', self.on_method_select)
+        self.method_tree.bind('<Double-1>', self.toggle_method_selection)
+    
+    def create_ai_recommendations_tab(self):
+        """Create the AI recommendations tab"""
+        ai_frame = ttk.Frame(self.notebook)
+        self.notebook.add(ai_frame, text="AI Recommendations")
+        
+        # Configure grid
+        ai_frame.grid_columnconfigure(0, weight=1)
+        ai_frame.grid_rowconfigure(1, weight=1)
+        
+        # Header
+        header_label = ttk.Label(ai_frame, text="AI Analysis & Recommendations", font=('TkDefaultFont', 12, 'bold'))
+        header_label.grid(row=0, column=0, pady=10)
+        
+        # Analysis text area
+        self.ai_text = tk.Text(ai_frame, wrap=tk.WORD, font=('TkDefaultFont', 10), state='disabled')
+        self.ai_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=(0, 10))
+        
+        # Scrollbar for text
+        ai_scrollbar = ttk.Scrollbar(ai_frame, orient=tk.VERTICAL, command=self.ai_text.yview)
+        ai_scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S), pady=(0, 10))
+        self.ai_text.configure(yscrollcommand=ai_scrollbar.set)
+        
+        # Initial message
+        self.ai_text.configure(state='normal')
+        self.ai_text.insert('1.0', "Click 'Get AI Analysis' to receive intelligent recommendations for this device.")
+        self.ai_text.configure(state='disabled')
+    
+    def create_method_details_tab(self):
+        """Create the method details tab"""
+        details_frame = ttk.Frame(self.notebook)
+        self.notebook.add(details_frame, text="Method Details")
+        
+        # Configure grid
+        details_frame.grid_columnconfigure(0, weight=1)
+        details_frame.grid_rowconfigure(1, weight=1)
+        
+        # Header
+        self.details_header = ttk.Label(details_frame, text="Select a method to view details", font=('TkDefaultFont', 12, 'bold'))
+        self.details_header.grid(row=0, column=0, pady=10)
+        
+        # Details text area
+        self.details_text = tk.Text(details_frame, wrap=tk.WORD, font=('TkDefaultFont', 10), state='disabled')
+        self.details_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=(0, 10))
+        
+        # Scrollbar for details
+        details_scrollbar = ttk.Scrollbar(details_frame, orient=tk.VERTICAL, command=self.details_text.yview)
+        details_scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S), pady=(0, 10))
+        self.details_text.configure(yscrollcommand=details_scrollbar.set)
+    
+    def load_methods(self):
+        """Load available methods for the selected device"""
         try:
-            # Get recommended methods
-            recommended = self.bypass_manager.get_recommended_methods(self.device)
-            
-            # Get all available methods by category
-            all_methods = self.bypass_manager.get_available_methods()
-            
-            self.available_methods = all_methods
-            
-            # Populate method tabs
-            self.populate_recommended_methods(recommended)
-            self.populate_methods_by_category()
-            
+            self.available_methods = self.bypass_manager.get_recommended_methods(self.device)
+            self.populate_method_tree()
+            self.logger.info(f"Loaded {len(self.available_methods)} methods for device {self.device.serial}")
         except Exception as e:
-            self.logger.error(f"Error loading bypass methods: {e}")
+            self.logger.error(f"Failed to load methods: {e}")
             messagebox.showerror("Error", f"Failed to load bypass methods: {e}")
     
-    def populate_recommended_methods(self, recommended_methods: List[BypassMethod]):
-        """Populate the recommended methods tab"""
-        if not recommended_methods:
-            no_methods_label = ttk.Label(
-                self.recommended_scroll_frame,
-                text="No recommended methods available for this device.",
-                font=('Arial', 10, 'italic')
+    def populate_method_tree(self):
+        """Populate the method tree with available methods"""
+        # Clear existing items
+        for item in self.method_tree.get_children():
+            self.method_tree.delete(item)
+        
+        # Add methods
+        for method in self.available_methods:
+            values = (
+                method.name,
+                method.category.title(),
+                method.risk_level.title(),
+                f"{method.success_rate:.1%}",
+                f"{method.estimated_time}",
+                method.description
             )
-            no_methods_label.pack(pady=20)
+            self.method_tree.insert('', 'end', values=values, tags=(method.name,))
+        
+        # Configure tags for risk levels
+        self.method_tree.tag_configure('low_risk', background='#e8f5e8')
+        self.method_tree.tag_configure('medium_risk', background='#fff3cd')
+        self.method_tree.tag_configure('high_risk', background='#f8d7da')
+    
+    def get_ai_analysis(self):
+        """Get AI analysis for the device"""
+        def run_analysis():
+            try:
+                self.ai_button.configure(state='disabled', text='Analyzing...')
+                
+                # Get AI analysis
+                analysis = self.bypass_manager.get_ai_device_analysis(self.device)
+                self.ai_analysis = analysis
+                
+                # Update UI in main thread
+                self.after(0, self.display_ai_analysis, analysis)
+                
+            except Exception as e:
+                self.logger.error(f"AI analysis failed: {e}")
+                self.after(0, self.display_ai_error, str(e))
+            finally:
+                self.after(0, lambda: self.ai_button.configure(state='normal', text='Get AI Analysis'))
+        
+        # Run analysis in background thread
+        analysis_thread = threading.Thread(target=run_analysis, daemon=True)
+        analysis_thread.start()
+    
+    def display_ai_analysis(self, analysis):
+        """Display AI analysis results"""
+        self.ai_text.configure(state='normal')
+        self.ai_text.delete('1.0', tk.END)
+        
+        # Format analysis text
+        profile = analysis.get('device_profile', {})
+        
+        analysis_text = f"""AI DEVICE ANALYSIS
+{'=' * 50}
+
+Device: {self.device.brand} {self.device.model}
+Android Version: {self.device.android_version}
+FRP Status: {'Enabled' if self.device.frp_enabled else 'Disabled' if self.device.frp_enabled is not None else 'Unknown'}
+
+SECURITY ASSESSMENT
+{'-' * 30}
+{analysis.get('security_assessment', 'No assessment available')}
+
+FRP COMPLEXITY: {profile.get('frp_complexity', 'Unknown').upper()}
+VULNERABILITY SCORE: {profile.get('vulnerability_score', 0):.2f}/1.0
+
+RECOMMENDED METHODS
+{'-' * 30}
+"""
+        
+        recommended_methods = profile.get('recommended_methods', [])
+        success_probs = profile.get('success_probabilities', {})
+        
+        if recommended_methods:
+            for i, method_name in enumerate(recommended_methods[:5], 1):
+                method = next((m for m in self.available_methods if m.name == method_name), None)
+                if method:
+                    prob = success_probs.get(method_name, 0.5)
+                    analysis_text += f"{i}. {method.description}\n"
+                    analysis_text += f"   Success Probability: {prob:.1%}\n"
+                    analysis_text += f"   Risk Level: {method.risk_level.title()}\n\n"
+        else:
+            analysis_text += "No specific recommendations available.\n\n"
+        
+        analysis_text += f"""BYPASS STRATEGY
+{'-' * 30}
+{analysis.get('bypass_strategy', 'No strategy available')}
+
+RECOMMENDATIONS
+{'-' * 30}
+• Start with the highest probability methods
+• Consider risk levels based on your comfort level
+• Have backup methods ready in case primary methods fail
+• Monitor device responses carefully during execution
+"""
+        
+        self.ai_text.insert('1.0', analysis_text)
+        self.ai_text.configure(state='disabled')
+        
+        # Switch to AI tab
+        self.notebook.select(1)
+    
+    def display_ai_error(self, error_msg):
+        """Display AI analysis error"""
+        self.ai_text.configure(state='normal')
+        self.ai_text.delete('1.0', tk.END)
+        self.ai_text.insert('1.0', f"AI Analysis Error:\n\n{error_msg}\n\nPlease try again or proceed with manual method selection.")
+        self.ai_text.configure(state='disabled')
+    
+    def on_method_select(self, event):
+        """Handle method selection in tree"""
+        selection = self.method_tree.selection()
+        if selection:
+            item = selection[0]
+            method_name = self.method_tree.item(item)['values'][0]
+            method = next((m for m in self.available_methods if m.name == method_name), None)
+            if method:
+                self.show_method_details(method)
+    
+    def show_method_details(self, method: BypassMethod):
+        """Show detailed information about a method"""
+        self.details_header.configure(text=f"Method Details: {method.name}")
+        
+        self.details_text.configure(state='normal')
+        self.details_text.delete('1.0', tk.END)
+        
+        details_text = f"""METHOD: {method.name}
+{'=' * 50}
+
+DESCRIPTION
+{method.description}
+
+CATEGORY: {method.category.title()}
+RISK LEVEL: {method.risk_level.title()}
+SUCCESS RATE: {method.success_rate:.1%}
+ESTIMATED TIME: {method.estimated_time} minutes
+
+REQUIREMENTS
+{'-' * 20}
+"""
+        
+        for req in method.requirements:
+            details_text += f"• {req}\n"
+        
+        details_text += f"\nSUPPORTED DEVICES\n{'-' * 20}\n"
+        for device in method.supported_devices:
+            details_text += f"• {device}\n"
+        
+        details_text += f"\nANDROID VERSIONS\n{'-' * 20}\n"
+        for version in method.android_versions:
+            details_text += f"• Android {version}\n"
+        
+        # Add AI-specific information if available
+        if self.ai_analysis and 'device_profile' in self.ai_analysis:
+            success_probs = self.ai_analysis['device_profile'].get('success_probabilities', {})
+            if method.name in success_probs:
+                ai_prob = success_probs[method.name]
+                details_text += f"\nAI ANALYSIS\n{'-' * 20}\n"
+                details_text += f"AI Success Probability: {ai_prob:.1%}\n"
+                
+                if ai_prob > method.success_rate:
+                    details_text += "AI predicts higher success rate than baseline for this device.\n"
+                elif ai_prob < method.success_rate:
+                    details_text += "AI predicts lower success rate than baseline for this device.\n"
+                else:
+                    details_text += "AI prediction aligns with baseline success rate.\n"
+        
+        self.details_text.insert('1.0', details_text)
+        self.details_text.configure(state='disabled')
+        
+        # Switch to details tab
+        self.notebook.select(2)
+    
+    def toggle_method_selection(self, event):
+        """Toggle method selection on double-click"""
+        selection = self.method_tree.selection()
+        if selection:
+            item = selection[0]
+            method_name = self.method_tree.item(item)['values'][0]
+            method = next((m for m in self.available_methods if m.name == method_name), None)
+            
+            if method:
+                if method in self.selected_methods:
+                    self.selected_methods.remove(method)
+                    self.method_tree.set(item, 'Method', method.name)
+                else:
+                    self.selected_methods.append(method)
+                    self.method_tree.set(item, 'Method', f"✓ {method.name}")
+                
+                self.update_selection_display()
+    
+    def select_recommended(self):
+        """Select AI recommended methods"""
+        if not self.ai_analysis or 'device_profile' not in self.ai_analysis:
+            messagebox.showinfo("Info", "Please run AI analysis first to get recommendations.")
             return
         
-        for i, method in enumerate(recommended_methods):
-            self.create_method_widget(self.recommended_scroll_frame, method, i, recommended=True)
-    
-    def populate_methods_by_category(self):
-        """Populate methods by category tabs"""
-        # Group methods by category
-        categories = {
-            'adb': [],
-            'interface': [],
-            'system': [],
-            'hardware': []
-        }
+        recommended_names = self.ai_analysis['device_profile'].get('recommended_methods', [])
+        self.selected_methods = [m for m in self.available_methods if m.name in recommended_names[:3]]  # Top 3
         
-        for method in self.available_methods:
-            if 'adb' in method.name.lower():
-                categories['adb'].append(method)
-            elif 'interface' in method.name.lower() or 'ui' in method.name.lower():
-                categories['interface'].append(method)
-            elif 'system' in method.name.lower() or 'database' in method.name.lower() or 'partition' in method.name.lower():
-                categories['system'].append(method)
-            elif 'hardware' in method.name.lower() or 'edl' in method.name.lower() or 'download' in method.name.lower():
-                categories['hardware'].append(method)
-        
-        # Populate each category
-        frames = {
-            'adb': self.adb_scroll_frame,
-            'interface': self.interface_scroll_frame,
-            'system': self.system_scroll_frame,
-            'hardware': self.hardware_scroll_frame
-        }
-        
-        for category, methods in categories.items():
-            frame = frames[category]
-            if not methods:
-                no_methods_label = ttk.Label(
-                    frame,
-                    text=f"No {category} methods available for this device.",
-                    font=('Arial', 10, 'italic')
-                )
-                no_methods_label.pack(pady=20)
+        # Update tree display
+        for item in self.method_tree.get_children():
+            method_name = self.method_tree.item(item)['values'][0].replace('✓ ', '')
+            if any(m.name == method_name for m in self.selected_methods):
+                self.method_tree.set(item, 'Method', f"✓ {method_name}")
             else:
-                for i, method in enumerate(methods):
-                    self.create_method_widget(frame, method, i)
+                self.method_tree.set(item, 'Method', method_name)
+        
+        self.update_selection_display()
     
-    def create_method_widget(self, parent, method: BypassMethod, index: int, recommended: bool = False):
-        """Create a widget for a bypass method"""
-        # Method frame
-        method_frame = ttk.LabelFrame(parent, text=method.name, padding="10")
-        method_frame.pack(fill=tk.X, padx=5, pady=5)
+    def clear_selection(self):
+        """Clear all selected methods"""
+        self.selected_methods = []
         
-        # Add recommended badge
-        if recommended:
-            badge_frame = ttk.Frame(method_frame)
-            badge_frame.pack(fill=tk.X, pady=(0, 5))
-            
-            badge_label = ttk.Label(
-                badge_frame,
-                text="⭐ RECOMMENDED",
-                font=('Arial', 8, 'bold'),
-                foreground='gold'
-            )
-            badge_label.pack(side=tk.LEFT)
-        
-        # Method info frame
-        info_frame = ttk.Frame(method_frame)
-        info_frame.pack(fill=tk.X, pady=(0, 10))
-        info_frame.columnconfigure(1, weight=1)
-        
-        # Checkbox
-        var_key = f"{method.name}_{index}"
-        self.method_vars[var_key] = tk.BooleanVar()
-        
-        checkbox = ttk.Checkbutton(
-            info_frame,
-            variable=self.method_vars[var_key],
-            command=lambda m=method, k=var_key: self.on_method_toggle(m, k)
-        )
-        checkbox.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        
-        # Method details
-        details_frame = ttk.Frame(info_frame)
-        details_frame.grid(row=0, column=1, sticky=(tk.W, tk.E))
-        
-        # Description
-        desc_label = ttk.Label(
-            details_frame,
-            text=method.description,
-            font=('Arial', 10),
-            wraplength=400
-        )
-        desc_label.pack(anchor=tk.W)
-        
-        # Requirements and compatibility
-        req_text = f"Requirements: {', '.join(method.requirements)}"
-        req_label = ttk.Label(
-            details_frame,
-            text=req_text,
-            font=('Arial', 9),
-            foreground='gray'
-        )
-        req_label.pack(anchor=tk.W, pady=(2, 0))
-        
-        # Success rate and estimated time
-        stats_frame = ttk.Frame(details_frame)
-        stats_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        success_label = ttk.Label(
-            stats_frame,
-            text=f"Success Rate: {method.success_rate}%",
-            font=('Arial', 9),
-            foreground='green' if method.success_rate >= 70 else 'orange' if method.success_rate >= 40 else 'red'
-        )
-        success_label.pack(side=tk.LEFT)
-        
-        time_label = ttk.Label(
-            stats_frame,
-            text=f"Est. Time: {method.estimated_time_minutes} min",
-            font=('Arial', 9),
-            foreground='gray'
-        )
-        time_label.pack(side=tk.LEFT, padx=(20, 0))
-        
-        # Risk level
-        risk_color = {'low': 'green', 'medium': 'orange', 'high': 'red'}.get(method.risk_level, 'gray')
-        risk_label = ttk.Label(
-            stats_frame,
-            text=f"Risk: {method.risk_level.upper()}",
-            font=('Arial', 9),
-            foreground=risk_color
-        )
-        risk_label.pack(side=tk.RIGHT)
-        
-        # Compatibility indicators
-        compat_frame = ttk.Frame(details_frame)
-        compat_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        # Check device compatibility
-        is_compatible = self.check_method_compatibility(method)
-        
-        compat_label = ttk.Label(
-            compat_frame,
-            text="✓ Compatible" if is_compatible else "⚠ May not be compatible",
-            font=('Arial', 9),
-            foreground='green' if is_compatible else 'orange'
-        )
-        compat_label.pack(side=tk.LEFT)
-        
-        # AI Help button
-        help_button = ttk.Button(
-            compat_frame,
-            text="🤖 AI Help",
-            command=lambda: self.get_method_help(method.name),
-            width=10
-        )
-        help_button.pack(side=tk.RIGHT)
-        
-        # Store method reference
-        method_frame.method = method
-        method_frame.var_key = var_key
-    
-    def check_method_compatibility(self, method: BypassMethod) -> bool:
-        """Check if method is compatible with the device"""
-        # Check Android version compatibility
-        if self.device.android_version:
-            try:
-                device_version = float(self.device.android_version.split('.')[0])
-                if hasattr(method, 'min_android_version') and device_version < method.min_android_version:
-                    return False
-                if hasattr(method, 'max_android_version') and device_version > method.max_android_version:
-                    return False
-            except (ValueError, AttributeError):
-                pass
-        
-        # Check connection type requirements
-        if 'adb' in method.requirements and self.device.connection_type != 'adb':
-            return False
-        if 'fastboot' in method.requirements and self.device.connection_type != 'fastboot':
-            return False
-        
-        # Check root requirements
-        if 'root' in method.requirements and self.device.root_status != 'rooted':
-            return False
-        
-        # Check bootloader requirements
-        if 'unlocked_bootloader' in method.requirements and 'unlocked' not in (self.device.bootloader_status or '').lower():
-            return False
-        
-        return True
-    
-    def on_method_toggle(self, method: BypassMethod, var_key: str):
-        """Handle method selection toggle"""
-        if self.method_vars[var_key].get():
-            if method not in self.selected_methods:
-                self.selected_methods.append(method)
-        else:
-            if method in self.selected_methods:
-                self.selected_methods.remove(method)
+        # Update tree display
+        for item in self.method_tree.get_children():
+            method_name = self.method_tree.item(item)['values'][0].replace('✓ ', '')
+            self.method_tree.set(item, 'Method', method_name)
         
         self.update_selection_display()
     
     def update_selection_display(self):
-        """Update the selection summary display"""
+        """Update the selection display"""
         count = len(self.selected_methods)
-        
         if count == 0:
             self.selection_label.configure(text="No methods selected")
-            self.confirm_button.configure(state='disabled')
+        elif count == 1:
+            self.selection_label.configure(text="1 method selected")
         else:
-            total_time = sum(method.estimated_time_minutes for method in self.selected_methods)
-            self.selection_label.configure(
-                text=f"{count} method(s) selected (Est. total time: {total_time} min)"
-            )
-            self.confirm_button.configure(state='normal')
-        
-        # Notify parent
-        self.selection_callback(self.selected_methods)
-    
-    def clear_selection(self):
-        """Clear all method selections"""
-        for var in self.method_vars.values():
-            var.set(False)
-        
-        self.selected_methods.clear()
-        self.update_selection_display()
-    
-    def auto_select_methods(self):
-        """Automatically select recommended methods"""
-        self.clear_selection()
-        
-        # Get recommended methods
-        recommended = self.bypass_manager.get_recommended_methods(self.device)
-        
-        if not recommended:
-            messagebox.showinfo("Auto Select", "No recommended methods available for this device.")
-            return
-        
-        # Select up to 3 recommended methods
-        for method in recommended[:3]:
-            # Find the corresponding checkbox
-            for var_key, var in self.method_vars.items():
-                if method.name in var_key:
-                    var.set(True)
-                    self.on_method_toggle(method, var_key)
-                    break
-        
-        messagebox.showinfo(
-            "Auto Select",
-            f"Selected {len(self.selected_methods)} recommended method(s) for your device."
-        )
+            self.selection_label.configure(text=f"{count} methods selected")
     
     def confirm_selection(self):
         """Confirm method selection and proceed"""
         if not self.selected_methods:
-            messagebox.showerror("Error", "No methods selected")
+            messagebox.showwarning("Warning", "Please select at least one bypass method.")
             return
         
         # Show confirmation dialog
-        method_names = [method.name for method in self.selected_methods]
-        total_time = sum(method.estimated_time_minutes for method in self.selected_methods)
-        
-        message = f"""
-Confirm Method Selection:
+        method_names = [m.name for m in self.selected_methods]
+        message = f"""Confirm Method Selection:
 
-Selected Methods:
-{chr(10).join(f'• {name}' for name in method_names)}
+Selected Methods (in order):
+{chr(10).join(f'{i+1}. {name}' for i, name in enumerate(method_names))}
 
-Total Estimated Time: {total_time} minutes
-
-Proceed with these methods?
-"""
+These methods will be attempted in the order shown.
+Proceed with bypass execution?"""
         
         if messagebox.askyesno("Confirm Selection", message):
             self.selection_callback(self.selected_methods)
@@ -570,199 +459,31 @@ Proceed with these methods?
         """Get the currently selected methods"""
         return self.selected_methods.copy()
     
-    def load_ai_analysis(self):
-        """Load and display AI device analysis"""
-        try:
-            analysis = self.bypass_manager.get_ai_device_analysis(self.device)
-            
-            # Update AI summary text
-            self.ai_summary_text.configure(state='normal')
-            self.ai_summary_text.delete('1.0', tk.END)
-            
-            summary = f"""FRP Complexity: {analysis['device_profile']['frp_complexity'].title()}
-Vulnerability Score: {analysis['device_profile']['vulnerability_score']:.2f}/1.0
-Security Assessment: {analysis['security_assessment']}
-Bypass Strategy: {analysis['bypass_strategy']}"""
-            
-            self.ai_summary_text.insert('1.0', summary)
-            self.ai_summary_text.configure(state='disabled')
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load AI analysis: {e}")
-            self.ai_summary_text.configure(state='normal')
-            self.ai_summary_text.delete('1.0', tk.END)
-            self.ai_summary_text.insert('1.0', "AI analysis unavailable")
-            self.ai_summary_text.configure(state='disabled')
-    
-    def show_ai_analysis(self):
-        """Show detailed AI analysis in a popup window"""
-        try:
-            analysis = self.bypass_manager.get_ai_device_analysis(self.device)
-            
-            # Create popup window
-            analysis_window = tk.Toplevel(self)
-            analysis_window.title("AI Device Analysis")
-            analysis_window.geometry("600x500")
-            analysis_window.transient(self)
-            analysis_window.grab_set()
-            
-            # Create notebook for different analysis sections
-            notebook = ttk.Notebook(analysis_window)
-            notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            
-            # Device Profile tab
-            profile_frame = ttk.Frame(notebook)
-            notebook.add(profile_frame, text="Device Profile")
-            
-            profile_text = tk.Text(profile_frame, wrap=tk.WORD, font=('Courier', 10))
-            profile_text.pack(fill=tk.BOTH, expand=True)
-            
-            profile_info = f"""Device Analysis Report
-{'=' * 50}
-
-Device Information:
-  Brand: {self.device.brand}
-  Model: {self.device.model}
-  Android Version: {self.device.android_version}
-  Security Patch: {self.device.security_patch or 'Unknown'}
-
-AI Assessment:
-  FRP Complexity: {analysis['device_profile']['frp_complexity'].title()}
-  Vulnerability Score: {analysis['device_profile']['vulnerability_score']:.2f}/1.0
-  Security Level: {analysis['security_assessment']}
-
-Recommended Strategy:
-  {analysis['bypass_strategy']}
-
-AI Recommended Methods:
-"""
-            
-            for i, method in enumerate(analysis['device_profile']['recommended_methods'], 1):
-                success_prob = analysis['device_profile']['success_probabilities'].get(method, 0.0)
-                profile_info += f"  {i}. {method} (Success: {success_prob:.1%})\n"
-            
-            profile_text.insert('1.0', profile_info)
-            profile_text.configure(state='disabled')
-            
-            # Method Guidance tab
-            guidance_frame = ttk.Frame(notebook)
-            notebook.add(guidance_frame, text="Method Guidance")
-            
-            guidance_text = tk.Text(guidance_frame, wrap=tk.WORD, font=('Courier', 10))
-            guidance_text.pack(fill=tk.BOTH, expand=True)
-            
-            guidance_info = "Method-Specific Guidance:\n" + "=" * 50 + "\n\n"
-            
-            for method in analysis['device_profile']['recommended_methods'][:3]:
-                try:
-                    help_data = self.bypass_manager.get_contextual_help(self.device, method)
-                    guidance_info += f"{method.upper()}:\n"
-                    guidance_info += f"  Success Probability: {help_data.get('success_probability', 0.0):.1%}\n"
-                    
-                    if 'method_guidance' in help_data:
-                        guidance_info += "  Guidance:\n"
-                        for tip in help_data['method_guidance']:
-                            guidance_info += f"    • {tip}\n"
-                    
-                    if 'prerequisites' in help_data:
-                        guidance_info += "  Prerequisites:\n"
-                        for req in help_data['prerequisites']:
-                            guidance_info += f"    • {req}\n"
-                    
-                    guidance_info += "\n"
-                except Exception as e:
-                    guidance_info += f"{method}: Analysis unavailable\n\n"
-            
-            guidance_text.insert('1.0', guidance_info)
-            guidance_text.configure(state='disabled')
-            
-            # AI Insights tab
-            insights_frame = ttk.Frame(notebook)
-            notebook.add(insights_frame, text="AI Insights")
-            
-            insights_text = tk.Text(insights_frame, wrap=tk.WORD, font=('Courier', 10))
-            insights_text.pack(fill=tk.BOTH, expand=True)
-            
-            try:
-                ai_insights = self.bypass_manager.get_ai_insights()
-                insights_info = f"""AI Learning Statistics
-{'=' * 50}
-
-Overall Performance:
-  Success Rate: {ai_insights.get('overall_success_rate', 0.0):.1%}
-  Total Attempts: {ai_insights.get('total_attempts', 0)}
-  Device Profiles: {ai_insights.get('device_profiles_count', 0)}
-  Learning Status: {ai_insights.get('learning_status', 'Unknown')}
-
-Method Performance:
-"""
-                
-                method_perf = ai_insights.get('method_performance', {})
-                for method, stats in method_perf.items():
-                    insights_info += f"  {method}:\n"
-                    insights_info += f"    Success Rate: {stats.get('success_rate', 0.0):.1%}\n"
-                    insights_info += f"    Average Time: {stats.get('average_time', 0.0):.1f}s\n"
-                    insights_info += f"    Total Attempts: {stats.get('total_attempts', 0)}\n\n"
-                
-            except Exception as e:
-                insights_info = f"AI insights unavailable: {e}"
-            
-            insights_text.insert('1.0', insights_info)
-            insights_text.configure(state='disabled')
-            
-            # Close button
-            close_button = ttk.Button(analysis_window, text="Close", command=analysis_window.destroy)
-            close_button.pack(pady=10)
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to show AI analysis: {e}")
-    
-    def get_method_help(self, method_name: str):
-        """Show contextual help for a specific method"""
-        try:
-            help_data = self.bypass_manager.get_contextual_help(self.device, method_name)
-            
-            # Create help window
-            help_window = tk.Toplevel(self)
-            help_window.title(f"Help: {method_name}")
-            help_window.geometry("500x400")
-            help_window.transient(self)
-            help_window.grab_set()
-            
-            # Help content
-            help_text = tk.Text(help_window, wrap=tk.WORD, font=('Arial', 10))
-            help_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            
-            help_content = f"""Method: {method_name}
-{'=' * 50}
-
-Success Probability: {help_data.get('success_probability', 0.0):.1%}
-
-Guidance:
-"""
-            
-            for tip in help_data.get('method_guidance', []):
-                help_content += f"• {tip}\n"
-            
-            help_content += "\nPrerequisites:\n"
-            for req in help_data.get('prerequisites', []):
-                help_content += f"• {req}\n"
-            
-            help_content += "\nTroubleshooting:\n"
-            for tip in help_data.get('troubleshooting', []):
-                help_content += f"• {tip}\n"
-            
-            if help_data.get('alternatives'):
-                help_content += "\nAlternative Methods:\n"
-                for alt in help_data['alternatives']:
-                    help_content += f"• {alt}\n"
-            
-            help_text.insert('1.0', help_content)
-            help_text.configure(state='disabled')
-            
-            # Close button
-            close_button = ttk.Button(help_window, text="Close", command=help_window.destroy)
-            close_button.pack(pady=10)
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load method help: {e}")
+    def show_no_device_error(self):
+        """Show error when no device is selected"""
+        error_frame = ttk.Frame(self)
+        error_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Error message
+        error_label = ttk.Label(
+            error_frame, 
+            text="No Device Selected", 
+            font=('TkDefaultFont', 16, 'bold'),
+            foreground='red'
+        )
+        error_label.pack(pady=(50, 20))
+        
+        message_label = ttk.Label(
+            error_frame,
+            text="Please go back and select a device before choosing bypass methods.",
+            font=('TkDefaultFont', 12)
+        )
+        message_label.pack(pady=10)
+        
+        # Back button
+        back_button = ttk.Button(
+            error_frame,
+            text="Go Back to Device Selection",
+            command=lambda: self.master.master.go_back()  # Navigate back
+        )
+        back_button.pack(pady=20)

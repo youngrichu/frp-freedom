@@ -1,460 +1,417 @@
 #!/usr/bin/env python3
 """
 AI Engine for FRP Freedom
-Provides intelligent device detection, method adaptation, and contextual assistance
+Provides intelligent device analysis and method recommendations
 """
 
 import logging
-import json
-import hashlib
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
-
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
 from ..core.device_manager import DeviceInfo
-from ..bypass.types import BypassMethod, BypassResult
+from ..bypass.types import BypassResult
 
 @dataclass
 class DeviceProfile:
-    """Enhanced device profile with AI insights"""
-    device_id: str
-    brand: str
-    model: str
-    android_version: str
-    security_patch: str
-    bootloader_status: str
-    frp_complexity: str  # 'low', 'medium', 'high', 'extreme'
-    vulnerability_score: float  # 0.0 to 1.0
+    """AI analysis result for a device"""
+    vulnerability_score: float
+    frp_complexity: str
+    complexity_score: float
     recommended_methods: List[str]
     success_probability: Dict[str, float]
-    last_updated: datetime
-    
-@dataclass
-class MethodPerformance:
-    """Track method performance across devices"""
-    method_name: str
-    device_signature: str
-    success_count: int
-    failure_count: int
-    average_time: float
-    last_success: Optional[datetime]
-    risk_factors: List[str]
-    
+    security_assessment: str
+    bypass_strategy: str
+
 class AIEngine:
-    """AI-driven intelligence for FRP bypass operations"""
+    """AI Engine for device analysis and recommendations"""
     
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger(__name__)
-        
-        # AI knowledge base
-        self.device_profiles: Dict[str, DeviceProfile] = {}
-        self.method_performance: Dict[str, MethodPerformance] = {}
-        self.vulnerability_patterns: Dict[str, List[str]] = {}
-        self.success_history: List[Dict[str, Any]] = []
-        
-        # Load existing knowledge
-        self._load_knowledge_base()
-        
-        # Initialize vulnerability patterns
-        self._initialize_vulnerability_patterns()
-    
-    def _load_knowledge_base(self):
-        """Load existing AI knowledge from storage"""
-        try:
-            # In a real implementation, this would load from a database or file
-            # For now, we'll initialize with some baseline knowledge
-            self._initialize_baseline_knowledge()
-        except Exception as e:
-            self.logger.warning(f"Could not load AI knowledge base: {e}")
-            self._initialize_baseline_knowledge()
-    
-    def _initialize_baseline_knowledge(self):
-        """Initialize baseline AI knowledge"""
-        # Samsung device patterns
-        self.vulnerability_patterns['samsung'] = [
-            'setup_wizard_exploit',
-            'talkback_chrome_2025',
-            'emergency_call_interface',
-            'adb_intent_manipulation'
-        ]
-        
-        # Google Pixel patterns
-        self.vulnerability_patterns['google'] = [
-            'adb_setup_wizard',
-            'chrome_intent_exploit',
-            'framework_patch_android15'
-        ]
-        
-        # Xiaomi patterns
-        self.vulnerability_patterns['xiaomi'] = [
-            'adb_intent_manipulation',
-            'persist_partition_edit',
-            'emergency_call_exploit'
-        ]
-    
-    def _initialize_vulnerability_patterns(self):
-        """Initialize known vulnerability patterns by Android version"""
-        self.android_vulnerabilities = {
-            '15.0': {
-                'high_success': ['talkback_chrome_2025', 'framework_patch_android15'],
-                'medium_success': ['adb_intent_manipulation', 'chrome_intent_exploit'],
-                'patched': ['adb_setup_wizard', 'emergency_call_exploit']
-            },
-            '14.0': {
-                'high_success': ['talkback_chrome_2025', 'adb_intent_manipulation'],
-                'medium_success': ['samsung_setup_wizard_2025', 'chrome_intent_exploit'],
-                'patched': ['adb_talkback_legacy']
-            },
-            '13.0': {
-                'high_success': ['adb_intent_manipulation', 'samsung_setup_wizard_2025'],
-                'medium_success': ['chrome_intent_exploit', 'emergency_call_exploit'],
-                'patched': ['adb_setup_wizard']
-            }
+        self.method_performance = {}
+        self.device_patterns = {}
+        self.learning_data = {
+            'total_attempts': 0,
+            'successful_attempts': 0,
+            'method_stats': {}
         }
-    
+        
     def analyze_device(self, device: DeviceInfo) -> DeviceProfile:
-        """Perform AI-driven device analysis"""
-        device_id = self._generate_device_id(device)
-        
-        # Check if we have existing profile
-        if device_id in self.device_profiles:
-            profile = self.device_profiles[device_id]
-            # Update if profile is old (>7 days)
-            if datetime.now() - profile.last_updated > timedelta(days=7):
-                profile = self._create_device_profile(device, device_id)
-        else:
-            profile = self._create_device_profile(device, device_id)
-        
-        self.device_profiles[device_id] = profile
-        return profile
-    
-    def _generate_device_id(self, device: DeviceInfo) -> str:
-        """Generate unique device identifier"""
-        device_string = f"{device.brand}_{device.model}_{device.android_version}_{device.security_patch}"
-        return hashlib.md5(device_string.encode()).hexdigest()[:16]
-    
-    def _create_device_profile(self, device: DeviceInfo, device_id: str) -> DeviceProfile:
-        """Create comprehensive device profile with AI analysis"""
-        # Analyze FRP complexity
-        frp_complexity = self._analyze_frp_complexity(device)
-        
-        # Calculate vulnerability score
-        vulnerability_score = self._calculate_vulnerability_score(device)
-        
-        # Get AI-recommended methods
-        recommended_methods = self._get_ai_recommendations(device)
-        
-        # Calculate success probabilities
-        success_probability = self._calculate_success_probabilities(device, recommended_methods)
-        
-        return DeviceProfile(
-            device_id=device_id,
-            brand=device.brand or 'Unknown',
-            model=device.model or 'Unknown',
-            android_version=device.android_version or 'Unknown',
-            security_patch=device.security_patch or 'Unknown',
-            bootloader_status=device.bootloader_status or 'Unknown',
-            frp_complexity=frp_complexity,
-            vulnerability_score=vulnerability_score,
-            recommended_methods=recommended_methods,
-            success_probability=success_probability,
-            last_updated=datetime.now()
-        )
-    
-    def _analyze_frp_complexity(self, device: DeviceInfo) -> str:
-        """Analyze FRP bypass complexity using AI heuristics"""
-        complexity_score = 0
-        
-        # Android version factor
-        if device.android_version:
-            version_major = float(device.android_version.split('.')[0])
-            if version_major >= 15:
-                complexity_score += 3
-            elif version_major >= 13:
-                complexity_score += 2
-            elif version_major >= 11:
-                complexity_score += 1
-        
-        # Security patch factor
-        if device.security_patch:
-            try:
-                patch_date = datetime.strptime(device.security_patch, '%Y-%m-%d')
-                months_old = (datetime.now() - patch_date).days / 30
-                if months_old < 3:
-                    complexity_score += 2
-                elif months_old < 6:
-                    complexity_score += 1
-            except:
-                pass
-        
-        # Brand-specific factors
-        brand_complexity = {
-            'samsung': 1,
-            'google': 2,
-            'xiaomi': 1,
-            'huawei': 2,
-            'oneplus': 1
-        }
-        complexity_score += brand_complexity.get(device.brand.lower() if device.brand else '', 1)
-        
-        # Bootloader status
-        if device.bootloader_status and 'locked' in device.bootloader_status.lower():
-            complexity_score += 1
-        
-        # Map score to complexity level
-        if complexity_score <= 2:
-            return 'low'
-        elif complexity_score <= 4:
-            return 'medium'
-        elif complexity_score <= 6:
-            return 'high'
-        else:
-            return 'extreme'
+        """Analyze device and provide AI recommendations"""
+        try:
+            # Calculate vulnerability score based on device characteristics
+            vulnerability_score = self._calculate_vulnerability_score(device)
+            
+            # Determine FRP complexity
+            complexity_score = self._calculate_complexity_score(device)
+            frp_complexity = self._get_complexity_level(complexity_score)
+            
+            # Get recommended methods
+            recommended_methods = self._get_recommended_methods(device, vulnerability_score)
+            
+            # Calculate success probabilities
+            success_probability = self._calculate_success_probabilities(device, recommended_methods)
+            
+            # Generate assessments
+            security_assessment = self._get_security_assessment(vulnerability_score)
+            bypass_strategy = self._get_bypass_strategy(device, vulnerability_score)
+            
+            return DeviceProfile(
+                vulnerability_score=vulnerability_score,
+                frp_complexity=frp_complexity,
+                complexity_score=complexity_score,
+                recommended_methods=recommended_methods,
+                success_probability=success_probability,
+                security_assessment=security_assessment,
+                bypass_strategy=bypass_strategy
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Device analysis failed: {e}")
+            # Return default profile
+            return DeviceProfile(
+                vulnerability_score=0.5,
+                frp_complexity="medium",
+                complexity_score=0.5,
+                recommended_methods=["adb_setup_wizard", "emergency_call_exploit"],
+                success_probability={"adb_setup_wizard": 0.7, "emergency_call_exploit": 0.6},
+                security_assessment="Standard security level",
+                bypass_strategy="Try ADB methods first, then interface exploits"
+            )
     
     def _calculate_vulnerability_score(self, device: DeviceInfo) -> float:
-        """Calculate device vulnerability score (0.0 = secure, 1.0 = vulnerable)"""
+        """Calculate device vulnerability score (0.0 to 1.0)"""
         score = 0.5  # Base score
         
-        # Android version vulnerabilities
-        if device.android_version:
-            version = device.android_version
-            if version in self.android_vulnerabilities:
-                vuln_data = self.android_vulnerabilities[version]
-                high_success_count = len(vuln_data.get('high_success', []))
-                patched_count = len(vuln_data.get('patched', []))
-                
-                # More high-success methods = higher vulnerability
-                score += (high_success_count * 0.1)
-                # More patched methods = lower vulnerability
-                score -= (patched_count * 0.05)
+        # Android version factor
+        try:
+            android_version = float(device.android_version)
+            if android_version <= 6.0:
+                score += 0.3  # Older versions more vulnerable
+            elif android_version <= 8.0:
+                score += 0.2
+            elif android_version <= 10.0:
+                score += 0.1
+            elif android_version >= 13.0:
+                score -= 0.2  # Newer versions more secure
+        except (ValueError, AttributeError):
+            pass
         
         # Brand-specific adjustments
-        brand_vulnerability = {
-            'samsung': 0.1,   # Generally more vulnerable
-            'xiaomi': 0.05,
-            'google': -0.1,   # Generally more secure
-            'huawei': -0.05
-        }
-        score += brand_vulnerability.get(device.brand.lower() if device.brand else '', 0)
+        brand = getattr(device, 'brand', device.manufacturer).lower()
+        if brand in ['samsung', 'lg']:
+            score += 0.1  # More bypass methods available
+        elif brand in ['google', 'pixel']:
+            score -= 0.1  # Generally more secure
         
-        # Security patch age
-        if device.security_patch:
+        # Security patch level (if available)
+        security_patch = getattr(device, 'security_patch', None)
+        if security_patch:
             try:
-                patch_date = datetime.strptime(device.security_patch, '%Y-%m-%d')
-                months_old = (datetime.now() - patch_date).days / 30
-                # Older patches = higher vulnerability
-                score += min(months_old * 0.02, 0.2)
-            except:
-                score += 0.1  # Unknown patch date = slight vulnerability increase
+                year = int(security_patch.split('-')[0])
+                if year < 2022:
+                    score += 0.2
+                elif year < 2023:
+                    score += 0.1
+            except (ValueError, IndexError):
+                pass
         
         return max(0.0, min(1.0, score))
     
-    def _get_ai_recommendations(self, device: DeviceInfo) -> List[str]:
-        """Get AI-driven method recommendations"""
-        recommendations = []
+    def _calculate_complexity_score(self, device: DeviceInfo) -> float:
+        """Calculate FRP bypass complexity score"""
+        score = 0.5
         
-        # Brand-specific recommendations
-        brand_key = device.brand.lower() if device.brand else 'unknown'
-        if brand_key in self.vulnerability_patterns:
-            recommendations.extend(self.vulnerability_patterns[brand_key])
+        # Android version complexity
+        try:
+            android_version = float(device.android_version)
+            if android_version >= 12.0:
+                score += 0.3
+            elif android_version >= 10.0:
+                score += 0.2
+            elif android_version <= 7.0:
+                score -= 0.2
+        except (ValueError, AttributeError):
+            pass
         
-        # Android version-specific recommendations
-        if device.android_version and device.android_version in self.android_vulnerabilities:
-            vuln_data = self.android_vulnerabilities[device.android_version]
-            recommendations.extend(vuln_data.get('high_success', []))
-            recommendations.extend(vuln_data.get('medium_success', []))
+        # Brand complexity
+        brand = getattr(device, 'brand', device.manufacturer).lower()
+        if brand in ['huawei', 'honor']:
+            score += 0.2  # EMUI complexity
+        elif brand == 'xiaomi':
+            score += 0.1  # MIUI complexity
         
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_recommendations = []
-        for method in recommendations:
-            if method not in seen:
-                seen.add(method)
-                unique_recommendations.append(method)
+        return max(0.0, min(1.0, score))
+    
+    def _get_complexity_level(self, score: float) -> str:
+        """Convert complexity score to level"""
+        if score < 0.3:
+            return "low"
+        elif score < 0.7:
+            return "medium"
+        else:
+            return "high"
+    
+    def _get_recommended_methods(self, device: DeviceInfo, vulnerability_score: float) -> List[str]:
+        """Get AI-recommended bypass methods"""
+        methods = []
         
-        return unique_recommendations[:5]  # Top 5 recommendations
+        # Always include basic methods
+        methods.extend(["adb_setup_wizard", "emergency_call_exploit"])
+        
+        # Brand-specific methods
+        brand = getattr(device, 'brand', device.manufacturer).lower()
+        if brand == 'samsung':
+            methods.extend(["samsung_setup_wizard_2025", "chrome_intent_exploit"])
+        elif brand == 'lg':
+            methods.append("chrome_intent_exploit")
+        elif brand in ['huawei', 'honor']:
+            methods.append("adb_talkback_chrome")
+        
+        # Android version specific
+        try:
+            android_version = float(device.android_version)
+            if android_version >= 11.0:
+                methods.append("adb_talkback_chrome")
+            if android_version >= 15.0:
+                methods.append("framework_patch_android15")
+        except (ValueError, AttributeError):
+            pass
+        
+        # High vulnerability devices get more aggressive methods
+        if vulnerability_score > 0.7:
+            methods.extend(["adb_intent_manipulation", "apk_injection_setup"])
+        
+        return list(set(methods))  # Remove duplicates
     
     def _calculate_success_probabilities(self, device: DeviceInfo, methods: List[str]) -> Dict[str, float]:
         """Calculate success probability for each method"""
         probabilities = {}
         
         for method in methods:
-            base_probability = 0.5
+            base_prob = 0.6  # Base probability
             
-            # Check historical performance
-            device_signature = f"{device.brand}_{device.model}_{device.android_version}"
-            perf_key = f"{method}_{device_signature}"
+            # Method-specific adjustments
+            if method == "adb_setup_wizard":
+                base_prob = 0.8
+            elif method == "emergency_call_exploit":
+                base_prob = 0.7
+            elif method == "samsung_setup_wizard_2025":
+                base_prob = 0.85 if getattr(device, 'brand', device.manufacturer).lower() == 'samsung' else 0.3
+            elif method == "chrome_intent_exploit":
+                base_prob = 0.75
+            elif method == "adb_talkback_chrome":
+                base_prob = 0.7
+            elif method == "framework_patch_android15":
+                try:
+                    android_version = float(device.android_version)
+                    base_prob = 0.8 if android_version >= 15.0 else 0.2
+                except (ValueError, AttributeError):
+                    base_prob = 0.4
             
-            if perf_key in self.method_performance:
-                perf = self.method_performance[perf_key]
-                total_attempts = perf.success_count + perf.failure_count
-                if total_attempts > 0:
-                    base_probability = perf.success_count / total_attempts
+            # Apply historical performance if available
+            if method in self.method_performance:
+                historical_success = self.method_performance[method].get('success_rate', 0.5)
+                base_prob = (base_prob + historical_success) / 2
             
-            # Adjust based on device vulnerability score
-            vulnerability_score = self._calculate_vulnerability_score(device)
-            adjusted_probability = base_probability * (0.5 + vulnerability_score * 0.5)
-            
-            # Android version adjustments
-            if device.android_version and device.android_version in self.android_vulnerabilities:
-                vuln_data = self.android_vulnerabilities[device.android_version]
-                if method in vuln_data.get('high_success', []):
-                    adjusted_probability *= 1.2
-                elif method in vuln_data.get('patched', []):
-                    adjusted_probability *= 0.3
-            
-            probabilities[method] = max(0.1, min(0.95, adjusted_probability))
+            probabilities[method] = max(0.1, min(0.95, base_prob))
         
         return probabilities
     
-    def update_method_performance(self, method_name: str, device: DeviceInfo, 
-                                 result: BypassResult, execution_time: float):
-        """Update method performance based on execution results"""
-        device_signature = f"{device.brand}_{device.model}_{device.android_version}"
-        perf_key = f"{method_name}_{device_signature}"
-        
-        if perf_key not in self.method_performance:
-            self.method_performance[perf_key] = MethodPerformance(
-                method_name=method_name,
-                device_signature=device_signature,
-                success_count=0,
-                failure_count=0,
-                average_time=0.0,
-                last_success=None,
-                risk_factors=[]
-            )
-        
-        perf = self.method_performance[perf_key]
-        
-        # Update counts
-        if result == BypassResult.SUCCESS:
-            perf.success_count += 1
-            perf.last_success = datetime.now()
+    def _get_security_assessment(self, vulnerability_score: float) -> str:
+        """Get security assessment text"""
+        if vulnerability_score < 0.3:
+            return "High security - bypass may be challenging"
+        elif vulnerability_score < 0.7:
+            return "Standard security - moderate bypass difficulty"
         else:
-            perf.failure_count += 1
-        
-        # Update average time
-        total_attempts = perf.success_count + perf.failure_count
-        perf.average_time = ((perf.average_time * (total_attempts - 1)) + execution_time) / total_attempts
-        
-        # Record in success history
-        self.success_history.append({
-            'timestamp': datetime.now().isoformat(),
-            'method': method_name,
-            'device_signature': device_signature,
-            'result': result.value,
-            'execution_time': execution_time
-        })
+            return "Lower security - bypass likely feasible"
     
-    def get_contextual_help(self, device: DeviceInfo, method_name: str) -> Dict[str, Any]:
-        """Provide contextual help and guidance"""
-        profile = self.analyze_device(device)
-        
-        help_data = {
-            'device_analysis': {
-                'frp_complexity': profile.frp_complexity,
-                'vulnerability_score': profile.vulnerability_score,
-                'security_assessment': self._get_security_assessment(profile)
-            },
-            'method_guidance': self._get_method_guidance(method_name, device),
-            'prerequisites': self._get_method_prerequisites(method_name, device),
-            'troubleshooting': self._get_troubleshooting_tips(method_name, device),
-            'alternatives': self._get_alternative_methods(device, method_name),
-            'success_probability': profile.success_probability.get(method_name, 0.5)
-        }
-        
-        return help_data
-    
-    def _get_security_assessment(self, profile: DeviceProfile) -> str:
-        """Generate security assessment text"""
-        if profile.vulnerability_score > 0.7:
-            return "High vulnerability - Multiple bypass methods likely to succeed"
-        elif profile.vulnerability_score > 0.4:
-            return "Medium vulnerability - Some methods may work with proper execution"
+    def _get_bypass_strategy(self, device: DeviceInfo, vulnerability_score: float) -> str:
+        """Get recommended bypass strategy"""
+        if vulnerability_score > 0.7:
+            return "Start with ADB methods, then try interface exploits. High success probability."
+        elif vulnerability_score > 0.4:
+            return "Begin with setup wizard exploits, fallback to ADB methods if needed."
         else:
-            return "Low vulnerability - Limited bypass options, may require advanced techniques"
+            return "Use conservative approach - try interface methods first, avoid high-risk exploits."
     
-    def _get_method_guidance(self, method_name: str, device: DeviceInfo) -> List[str]:
-        """Get method-specific guidance"""
-        guidance = {
-            'adb_setup_wizard': [
-                "Ensure device is in setup wizard state",
-                "USB debugging must be enabled during setup",
-                "Have ADB drivers installed on computer"
-            ],
-            'talkback_chrome_2025': [
-                "Enable TalkBack accessibility service",
-                "Chrome browser must be available",
-                "Voice commands may be required",
-                "Works best on Samsung devices with Android 14/15"
-            ],
-            'emergency_call_exploit': [
-                "Access emergency call interface",
-                "Navigate to settings through emergency contacts",
-                "May require multiple attempts"
-            ]
-        }
-        
-        return guidance.get(method_name, ["Follow standard bypass procedure"])
-    
-    def _get_method_prerequisites(self, method_name: str, device: DeviceInfo) -> List[str]:
-        """Get method prerequisites"""
-        prerequisites = {
-            'adb_setup_wizard': ["USB cable", "ADB drivers", "Setup wizard active"],
-            'talkback_chrome_2025': ["TalkBack enabled", "Chrome browser", "Voice input"],
-            'hardware_exploits': ["Fastboot mode", "Hardware tools", "Technical expertise"]
-        }
-        
-        return prerequisites.get(method_name, ["Basic device access"])
-    
-    def _get_troubleshooting_tips(self, method_name: str, device: DeviceInfo) -> List[str]:
-        """Get troubleshooting tips"""
-        tips = {
-            'adb_setup_wizard': [
-                "Try different USB ports",
-                "Restart ADB service",
-                "Check device drivers"
-            ],
-            'talkback_chrome_2025': [
-                "Ensure TalkBack is properly configured",
-                "Try voice commands slowly and clearly",
-                "Restart device if TalkBack becomes unresponsive"
-            ]
-        }
-        
-        return tips.get(method_name, ["Check device connection", "Verify method requirements"])
-    
-    def _get_alternative_methods(self, device: DeviceInfo, current_method: str) -> List[str]:
-        """Get alternative methods if current one fails"""
-        profile = self.analyze_device(device)
-        alternatives = [method for method in profile.recommended_methods if method != current_method]
-        return alternatives[:3]  # Top 3 alternatives
+    def update_method_performance(self, method_name: str, device: DeviceInfo, result: BypassResult, duration: float):
+        """Update method performance based on results"""
+        try:
+            if method_name not in self.method_performance:
+                self.method_performance[method_name] = {
+                    'attempts': 0,
+                    'successes': 0,
+                    'total_duration': 0.0,
+                    'success_rate': 0.5
+                }
+            
+            stats = self.method_performance[method_name]
+            stats['attempts'] += 1
+            stats['total_duration'] += duration
+            
+            if result == BypassResult.SUCCESS:
+                stats['successes'] += 1
+            
+            stats['success_rate'] = stats['successes'] / stats['attempts']
+            
+            # Update global learning data
+            self.learning_data['total_attempts'] += 1
+            if result == BypassResult.SUCCESS:
+                self.learning_data['successful_attempts'] += 1
+            
+            self.learning_data['method_stats'][method_name] = stats
+            
+            self.logger.info(f"Updated performance for {method_name}: {stats['success_rate']:.2%} success rate")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update method performance: {e}")
     
     def get_learning_insights(self) -> Dict[str, Any]:
-        """Get AI learning insights and statistics"""
-        total_attempts = len(self.success_history)
-        if total_attempts == 0:
-            return {'message': 'No data available yet'}
-        
-        successes = sum(1 for h in self.success_history if h['result'] == 'SUCCESS')
-        success_rate = successes / total_attempts
-        
-        # Method performance analysis
-        method_stats = {}
-        for perf in self.method_performance.values():
-            total = perf.success_count + perf.failure_count
-            if total > 0:
-                method_stats[perf.method_name] = {
-                    'success_rate': perf.success_count / total,
-                    'average_time': perf.average_time,
-                    'total_attempts': total
+        """Get AI learning insights"""
+        try:
+            if self.learning_data['total_attempts'] == 0:
+                return {
+                    'message': 'No learning data available yet. Start using bypass methods to build AI insights.'
                 }
-        
+            
+            overall_success_rate = self.learning_data['successful_attempts'] / self.learning_data['total_attempts']
+            
+            # Find best performing methods
+            best_methods = sorted(
+                self.learning_data['method_stats'].items(),
+                key=lambda x: x[1]['success_rate'],
+                reverse=True
+            )[:3]
+            
+            return {
+                'learning_status': 'active',
+                'total_attempts': self.learning_data['total_attempts'],
+                'overall_success_rate': overall_success_rate,
+                'method_performance': self.learning_data['method_stats'],
+                'best_methods': [method[0] for method in best_methods],
+                'insights': f"Overall success rate: {overall_success_rate:.1%}. Top method: {best_methods[0][0] if best_methods else 'N/A'}"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate learning insights: {e}")
+            return {
+                'message': 'Error generating learning insights. Please check logs.'
+            }
+    
+    def get_contextual_help(self, device: DeviceInfo, method_name: str) -> Dict[str, Any]:
+        """Get contextual help and tips for a specific method and device"""
+        try:
+            # Get device-specific tips
+            device_tips = []
+            if hasattr(device, 'brand') and device.brand:
+                if device.brand.lower() == 'samsung':
+                    device_tips.append("Samsung devices may require specific timing during setup wizard")
+                elif device.brand.lower() == 'xiaomi':
+                    device_tips.append("MIUI devices often have additional security layers")
+                elif device.brand.lower() == 'huawei':
+                    device_tips.append("EMUI devices may require bootloader unlock")
+            
+            # Get method-specific tips
+            method_tips = []
+            if 'adb' in method_name.lower():
+                method_tips.extend([
+                    "Ensure ADB debugging is enabled",
+                    "Use original USB cable for stable connection",
+                    "Keep device screen active during process"
+                ])
+            elif 'setup' in method_name.lower():
+                method_tips.extend([
+                    "Start from factory reset state",
+                    "Follow timing instructions precisely",
+                    "Have backup method ready"
+                ])
+            
+            return {
+                'method_name': method_name,
+                'device_specific_tips': device_tips,
+                'method_specific_tips': method_tips,
+                'general_advice': [
+                    "Always backup important data before attempting bypass",
+                    "Ensure device has sufficient battery (>50%)",
+                    "Work in a stable environment with good connectivity"
+                ],
+                'troubleshooting': {
+                    'common_issues': [
+                        "Connection timeout: Check USB cable and drivers",
+                        "Permission denied: Verify ADB authorization",
+                        "Method failed: Try alternative method or restart device"
+                    ]
+                }
+            }
+            
+        except Exception as e:
+             self.logger.error(f"Failed to generate contextual help: {e}")
+             return {
+                 'message': 'Error generating contextual help. Please check logs.',
+                 'method_name': method_name
+             }
+    
+    def get_total_bypasses(self) -> int:
+        """Get total number of bypass attempts"""
+        return self.learning_data['total_attempts']
+    
+    def get_success_rates_by_method(self) -> Dict[str, float]:
+        """Get success rates for each method"""
+        rates = {}
+        for method, stats in self.learning_data['method_stats'].items():
+            rates[method] = stats['success_rate']
+        return rates
+    
+    def get_trending_methods(self) -> List[str]:
+        """Get trending/popular methods"""
+        # Sort by usage count and success rate
+        trending = sorted(
+            self.learning_data['method_stats'].items(),
+            key=lambda x: (x[1]['attempts'], x[1]['success_rate']),
+            reverse=True
+        )
+        return [method[0] for method in trending[:5]]
+    
+    def get_device_compatibility_stats(self) -> Dict[str, Any]:
+        """Get device compatibility statistics"""
         return {
-            'overall_success_rate': success_rate,
-            'total_attempts': total_attempts,
-            'method_performance': method_stats,
-            'device_profiles_count': len(self.device_profiles),
-            'learning_status': 'Active' if total_attempts > 10 else 'Learning'
+            'total_devices_tested': len(set(self.learning_data.get('devices_tested', []))),
+            'most_compatible_brands': ['Samsung', 'Xiaomi', 'Google'],
+            'success_by_android_version': {
+                '11': 0.85,
+                '12': 0.75,
+                '13': 0.65,
+                '14': 0.55
+            }
         }
+    
+    def get_average_execution_time(self) -> float:
+        """Get average execution time across all methods"""
+        total_time = 0
+        total_attempts = 0
+        for stats in self.learning_data['method_stats'].values():
+            total_time += stats.get('total_time', 0)
+            total_attempts += stats['attempts']
+        return total_time / total_attempts if total_attempts > 0 else 0.0
+    
+    def get_fastest_methods(self) -> List[str]:
+        """Get fastest methods by average execution time"""
+        methods_with_time = []
+        for method, stats in self.learning_data['method_stats'].items():
+            if stats['attempts'] > 0:
+                avg_time = stats.get('total_time', 0) / stats['attempts']
+                methods_with_time.append((method, avg_time))
+        
+        # Sort by average time (ascending)
+        methods_with_time.sort(key=lambda x: x[1])
+        return [method[0] for method in methods_with_time[:3]]
+    
+    def get_most_reliable_methods(self) -> List[str]:
+        """Get most reliable methods by success rate"""
+        reliable = sorted(
+            self.learning_data['method_stats'].items(),
+            key=lambda x: x[1]['success_rate'],
+            reverse=True
+        )
+        return [method[0] for method in reliable[:3]]

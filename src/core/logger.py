@@ -70,17 +70,7 @@ class AuditLogger:
         }
         self.logger.info(json.dumps(event))
     
-    def log_ownership_verification(self, imei: str, verification_result: bool, method: str):
-        """Log ownership verification attempt"""
-        event = {
-            "event_type": "ownership_verification",
-            "timestamp": datetime.datetime.now().isoformat(),
-            "imei_partial": imei[:4] + "****" + imei[-4:] if len(imei) >= 8 else "invalid",
-            "verification_result": verification_result,
-            "verification_method": method
-        }
-        self.logger.info(json.dumps(event))
-    
+
     def log_bypass_attempt(self, device_info: Dict, method: str, success: bool, error: str = None):
         """Log bypass attempt"""
         event = {

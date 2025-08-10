@@ -12,10 +12,6 @@ app:
 
 # Security and Ethics Settings
 security:
-  # Ownership verification requirements
-  ownership_verification_required: true
-  ownership_verification_timeout: 300  # seconds
-  
   # Audit trail settings
   audit_trail_enabled: true
   audit_log_retention_days: 90
@@ -261,7 +257,6 @@ legal:
   
   # Disclaimers
   show_legal_warnings: true
-  require_ownership_confirmation: true
 
 # Experimental Features (disabled by default)
 experimental:

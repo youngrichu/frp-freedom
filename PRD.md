@@ -62,7 +62,7 @@ The tool will implement bypass methods categorized from the technical reference:
 - **Desktop Application**: Cross-platform (Windows, macOS, Linux) with a wizard-style UI for step-by-step guidance.
 - **Mobile Companion App**: Optional Android app for on-device diagnostics (requires temporary root).
 - **Key Screens**:
-  - Welcome: Device detection and ethical consent form (e.g., "Confirm ownership with IMEI check").
+  - Welcome: Device detection and ethical consent form (e.g., "Confirm device legitimacy with IMEI check").
   - Method Selection: Auto-recommend based on device model/Android version.
   - Progress: Real-time logs with success/failure indicators.
   - Post-Bypass: Recommendations for securing the device (e.g., enable 2FA).
@@ -70,7 +70,7 @@ The tool will implement bypass methods categorized from the technical reference:
 ### 3.3 Integration and Compatibility
 - **Device Support**: Android 5.0-15.0; major OEMs (Samsung, Google, Xiaomi, etc.).
 - **Dependencies**: USB drivers, ADB/fastboot binaries (bundled).
-- **APIs**: Optional integration with device databases (e.g., GSMA IMEI check for ownership verification).
+- **APIs**: Optional integration with device databases (e.g., GSMA IMEI check for device verification).
 
 ### 3.4 Security and Ethical Features
 - **Ownership Verification**: Mandatory IMEI/Serial input with cross-check against public databases; log attempts for auditing.

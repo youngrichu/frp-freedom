@@ -290,8 +290,7 @@ class BypassExecutionFrame(ttk.Frame):
         # Audit log
         self.audit_logger.log_bypass_attempt(
             device_id=self.device.serial_number,
-            methods=[method.name for method in self.methods],
-            user_verification="ownership_verified"  # Assuming verification was done earlier
+            methods=[method.name for method in self.methods]
         )
         
         # Start execution thread

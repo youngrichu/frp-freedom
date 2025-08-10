@@ -231,8 +231,7 @@ Device Connection Guide
             help_frame,
             wrap=tk.WORD,
             font=('Arial', 10),
-            state='disabled',
-            bg=self.cget('bg')
+            state='disabled'
         )
         help_text_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
@@ -367,7 +366,6 @@ Notes:
 • FRP bypass success depends on Android version and security patch level
 • Newer devices may have additional security measures
 • Some methods require specific device states (bootloader unlocked, etc.)
-• Always ensure you have legal ownership before proceeding
 """
         else:
             details = """

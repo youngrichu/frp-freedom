@@ -35,7 +35,6 @@ class Config:
             },
             "security": {
                 "max_attempts_per_device": 3,
-                "require_ownership_verification": False,
                 "encrypt_logs": True,
                 "audit_trail": True
             },
@@ -119,7 +118,6 @@ class Config:
     def get_ethical_guidelines(self) -> Dict[str, str]:
         """Return ethical guidelines and legal disclaimers"""
         return {
-            "ownership_verification": "You must verify device ownership before proceeding. This tool is for legitimate device recovery only.",
             "legal_disclaimer": "This tool is provided for educational and legitimate device recovery purposes only. Users are responsible for compliance with local laws.",
             "anti_theft": "Using this tool on stolen devices is illegal and unethical. All bypass attempts are logged for audit purposes.",
             "data_privacy": "All operations are performed locally. No data is transmitted to external servers.",

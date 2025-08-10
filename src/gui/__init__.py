@@ -8,7 +8,6 @@ from .main_window import FRPFreedomApp as MainWindow
 from .device_selection import DeviceSelectionFrame
 from .method_selection import MethodSelectionFrame
 from .bypass_execution import BypassExecutionFrame
-# from .ownership_verification import OwnershipVerificationDialog, show_ownership_verification
 from .utils import (
     ProgressDialog,
     InfoDialog,
@@ -28,8 +27,6 @@ __all__ = [
     'DeviceSelectionFrame',
     'MethodSelectionFrame',
     'BypassExecutionFrame',
-    # 'OwnershipVerificationDialog',
-    # 'show_ownership_verification',
     'ProgressDialog',
     'InfoDialog',
     'DeviceInfoWidget',

@@ -121,17 +121,12 @@ Pre-built executables will be available for download from the releases page.
    - Connect device via USB cable
    - Follow on-screen connection instructions
 
-3. **Verify Ownership**
-   - Complete the ownership verification process
-   - Provide purchase information or account details
-   - Accept legal declarations
-
-4. **Select Methods**
+3. **Select Methods**
    - Review recommended bypass methods
    - Select appropriate methods for your device
    - Review estimated time and success rates
 
-5. **Execute Bypass**
+4. **Execute Bypass**
    - Monitor progress in real-time
    - Follow any on-device instructions
    - Wait for completion notification
@@ -144,19 +139,13 @@ Pre-built executables will be available for download from the releases page.
 - If multiple devices are connected, select the target device
 - Verify device information (brand, model, Android version)
 
-#### Step 2: Ownership Verification
-- **Purchase Information**: Provide purchase date, retailer, receipt number
-- **Account Information**: Enter associated Google/Samsung accounts
-- **Documentation**: Upload purchase receipts or warranty cards (optional)
-- **Legal Declaration**: Accept terms and confirm ownership
-
-#### Step 3: Method Selection
+#### Step 2: Method Selection
 - Review device-specific recommended methods
 - Browse methods by category (ADB, Interface, System, Hardware)
 - Check compatibility indicators and success rates
 - Select one or more methods to execute
 
-#### Step 4: Bypass Execution
+#### Step 3: Bypass Execution
 - Monitor real-time progress and logs
 - Follow any device-specific instructions
 - Wait for completion (may take 5-30 minutes)
@@ -175,7 +164,6 @@ app:
   log_level: "INFO"
 
 security:
-  ownership_verification_required: true
   audit_trail_enabled: true
   log_encryption_enabled: true
   rate_limiting_enabled: true
@@ -233,7 +221,7 @@ frp-freedom/
 │       ├── device_selection.py # Device selection interface
 │       ├── method_selection.py # Method selection with AI recommendations
 │       ├── bypass_execution.py # Execution monitoring
-│       ├── ownership_verification.py  # Ownership verification
+
 │       └── utils.py            # GUI utilities
 ├── tests/                 # Unit tests
 ├── docs/                  # Documentation
@@ -344,13 +332,6 @@ The test suite validates:
 
 ## 🔒 Security Features
 
-### Ownership Verification
-- Multi-factor verification process
-- Purchase information validation
-- Account association verification
-- Document upload support
-- Legal declaration requirements
-
 ### Audit Trail
 - Comprehensive operation logging
 - Encrypted log storage
@@ -421,4 +402,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Remember**: Use this tool responsibly and only on devices you legitimately own. Respect local laws and regulations regarding device security and privacy.
+**Remember**: Use this tool responsibly and only with proper legal authorization. Respect local laws and regulations regarding device security and privacy.
