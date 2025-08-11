@@ -262,7 +262,7 @@ class MethodSelectionFrame(ttk.Frame):
 
 Device: {self.device.brand} {self.device.model}
 Android Version: {self.device.android_version}
-FRP Status: {'Enabled' if self.device.frp_enabled else 'Disabled' if self.device.frp_enabled is not None else 'Unknown'}
+FRP Status: {self.device.frp_status if self.device.frp_status else 'Unknown'}
 
 SECURITY ASSESSMENT
 {'-' * 30}

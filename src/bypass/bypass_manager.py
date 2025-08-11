@@ -263,21 +263,32 @@ class BypassManager:
     
     def _is_method_compatible(self, method: BypassMethod, device: DeviceInfo) -> bool:
         """Check if a method is compatible with the device"""
-        # Check manufacturer
-        if device.manufacturer.lower() not in [d.lower() for d in method.supported_devices]:
-            return False
-        
-        # Check Android version
-        device_version = device.android_version
-        if device_version not in method.android_versions:
-            # Try to match major version
-            device_major = device_version.split('.')[0] if '.' in device_version else device_version
-            method_majors = [v.split('.')[0] for v in method.android_versions]
-            if device_major not in method_majors:
+        # Handle unauthorized devices (FRP bypass scenarios)
+        if device.connection_type == 'adb_unauthorized':
+            # For unauthorized devices, only allow interface-based methods
+            # Skip ADB methods since device is not authorized
+            if method.category == 'adb':
+                return False
+            # Prioritize interface methods for FRP bypass
+            if method.category not in ['interface', 'system']:
                 return False
         
+        # Check manufacturer (skip for unknown devices)
+        if device.manufacturer != "Unknown" and device.manufacturer.lower() not in [d.lower() for d in method.supported_devices]:
+            return False
+        
+        # Check Android version (skip for unknown versions)
+        if device.android_version != "Unknown":
+            device_version = device.android_version
+            if device_version not in method.android_versions:
+                # Try to match major version
+                device_major = device_version.split('.')[0] if '.' in device_version else device_version
+                method_majors = [v.split('.')[0] for v in method.android_versions]
+                if device_major not in method_majors:
+                    return False
+        
         # Check connection type requirements
-        if method.category == 'adb' and device.connection_type != 'adb':
+        if method.category == 'adb' and device.connection_type not in ['adb', 'adb_unauthorized']:
             return False
         elif method.category == 'hardware' and device.connection_type not in ['fastboot', 'download']:
             return False

@@ -277,9 +277,7 @@ Device Connection Guide
         # Add devices to tree
         for device in devices:
             # Determine FRP status display
-            frp_status = "Unknown"
-            if device.frp_enabled is not None:
-                frp_status = "Enabled" if device.frp_enabled else "Disabled"
+            frp_status = device.frp_status if device.frp_status else "Unknown"
             
             # Add device to tree
             item_id = self.device_tree.insert('', 'end', values=(
@@ -346,7 +344,7 @@ Connection Information:
   Fastboot Status: {'Connected' if device.connection_type == 'fastboot' else 'Not Available'}
 
 Security Status:
-  FRP Status: {'Enabled' if device.frp_enabled else 'Disabled' if device.frp_enabled is not None else 'Unknown'}
+  FRP Status: {device.frp_status if device.frp_status else 'Unknown'}
   Bootloader: {device.bootloader_status or 'Unknown'}
   Root Status: {device.root_status or 'Unknown'}
   Encryption: {device.encryption_status or 'Unknown'}
@@ -401,7 +399,7 @@ Serial: {device.serial}
 Model: {device.model or 'Unknown'}
 Brand: {device.brand or 'Unknown'}
 Android: {device.android_version or 'Unknown'}
-FRP Status: {'Enabled' if device.frp_enabled else 'Disabled' if device.frp_enabled is not None else 'Unknown'}
+FRP Status: {device.frp_status if device.frp_status else 'Unknown'}
 
 Proceed with this device?
 """
@@ -466,7 +464,7 @@ Build ID: {device.build_id or 'Unknown'}
         security_info = f"""
 Security Information:
 
-FRP Status: {'Enabled' if device.frp_enabled else 'Disabled' if device.frp_enabled is not None else 'Unknown'}
+FRP Status: {device.frp_status if device.frp_status else 'Unknown'}
 Bootloader Status: {device.bootloader_status or 'Unknown'}
 Root Status: {device.root_status or 'Unknown'}
 Encryption Status: {device.encryption_status or 'Unknown'}
