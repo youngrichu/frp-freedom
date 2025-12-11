@@ -111,7 +111,7 @@ class MethodSelectionFrame(ttk.Frame):
         list_frame.grid_rowconfigure(1, weight=1)
         
         # Instructions
-        instructions = ttk.Label(list_frame, text="Select bypass methods to attempt (in order):")
+        instructions = ttk.Label(list_frame, text="Click on methods to select/deselect them (in order):")
         instructions.grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         
         # Method treeview
@@ -140,9 +140,9 @@ class MethodSelectionFrame(ttk.Frame):
         scrollbar.grid(row=1, column=1, sticky=(tk.N, tk.S), pady=5)
         self.method_tree.configure(yscrollcommand=scrollbar.set)
         
-        # Bind events
+        # Bind events - single click to toggle selection
+        self.method_tree.bind('<ButtonRelease-1>', self.toggle_method_selection)
         self.method_tree.bind('<<TreeviewSelect>>', self.on_method_select)
-        self.method_tree.bind('<Double-1>', self.toggle_method_selection)
     
     def create_ai_recommendations_tab(self):
         """Create the AI recommendations tab"""

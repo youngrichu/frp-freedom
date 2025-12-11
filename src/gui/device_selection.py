@@ -11,6 +11,7 @@ import logging
 from typing import List, Callable, Optional
 
 from ..core.device_manager import DeviceManager, DeviceInfo
+from ..core.samsung_adb_enabler import SamsungADBEnabler
 
 class DeviceSelectionFrame(ttk.Frame):
     """Frame for device selection and information display"""
@@ -23,6 +24,7 @@ class DeviceSelectionFrame(ttk.Frame):
         
         self.devices: List[DeviceInfo] = []
         self.selected_device: Optional[DeviceInfo] = None
+        self.device_map: dict[str, DeviceInfo] = {} # Maps tree item IDs to device objects
         
         self.setup_widgets()
         self.refresh_devices()
@@ -52,6 +54,14 @@ class DeviceSelectionFrame(ttk.Frame):
             command=self.refresh_devices
         )
         refresh_button.grid(row=0, column=2, padx=(10, 0))
+
+        # Enable ADB button
+        enable_adb_button = ttk.Button(
+            header_frame,
+            text="Enable Samsung ADB",
+            command=self.enable_samsung_adb
+        )
+        enable_adb_button.grid(row=0, column=3, padx=(10, 0))
         
         # Instructions
         instructions_label = ttk.Label(
@@ -262,46 +272,72 @@ Device Connection Guide
     
     def update_device_list(self, devices: List[DeviceInfo]):
         """Update the device list display"""
+        # Check if widget still exists (may be destroyed during background updates)
+        try:
+            if not self.winfo_exists():
+                return
+        except:
+            return
+        
+        # Check if device_tree widget exists and is valid
+        try:
+            if not hasattr(self, 'device_tree') or not self.device_tree.winfo_exists():
+                return
+        except (tk.TclError, AttributeError):
+            # Widget was destroyed or doesn't exist
+            return
+            
         self.devices = devices
         
-        # Clear existing items
-        for item in self.device_tree.get_children():
-            self.device_tree.delete(item)
+        # Clear existing items and device map
+        try:
+            for item in self.device_tree.get_children():
+                self.device_tree.delete(item)
+            self.device_map.clear()
+        except (tk.TclError, AttributeError):
+            # Widget was destroyed, ignore
+            return
         
-        # Update status
-        if not devices:
-            self.status_label.configure(text="No devices found. Please connect a device and try again.")
-        else:
-            self.status_label.configure(text=f"Found {len(devices)} device(s)")
+        # Update status label if it exists
+        try:
+            if hasattr(self, 'status_label') and self.status_label.winfo_exists():
+                if not devices:
+                    self.status_label.configure(text="No devices found. Please connect a device and try again.")
+                else:
+                    self.status_label.configure(text=f"Found {len(devices)} device(s)")
+        except (tk.TclError, AttributeError):
+            # Status label was destroyed, ignore
+            pass
         
         # Add devices to tree
-        for device in devices:
-            # Determine FRP status display
-            frp_status = device.frp_status if device.frp_status else "Unknown"
-            
-            # Add device to tree
-            item_id = self.device_tree.insert('', 'end', values=(
-                device.serial[:12] + "..." if len(device.serial) > 15 else device.serial,
-                device.model or "Unknown",
-                device.brand or "Unknown",
-                device.android_version or "Unknown",
-                device.connection_type.upper(),
-                frp_status
-            ))
-            
-            # Store device reference
-            self.device_tree.set(item_id, 'device_obj', device)
+        try:
+            for device in devices:
+                # Determine FRP status display
+                frp_status = device.frp_status if device.frp_status else "Unknown"
+                
+                # Add device to tree
+                item_id = self.device_tree.insert('', 'end', values=(
+                    device.serial[:12] + "..." if len(device.serial) > 15 else device.serial,
+                    device.model or "Unknown",
+                    device.brand or "Unknown",
+                    device.android_version or "Unknown",
+                    device.connection_type.upper(),
+                    frp_status
+                ))
+                
+                # Store device reference in map
+                self.device_map[item_id] = device
+        except (tk.TclError, AttributeError):
+            # Widget was destroyed during iteration, ignore
+            return
     
     def on_device_select(self, event):
         """Handle device selection in tree"""
         selection = self.device_tree.selection()
         if selection:
             item_id = selection[0]
-            # Find the device object
-            for device in self.devices:
-                if device.serial in self.device_tree.item(item_id)['values'][0]:
-                    self.selected_device = device
-                    break
+            # Get device object from map
+            self.selected_device = self.device_map.get(item_id)
             
             # Enable buttons
             self.select_button.configure(state='normal')
@@ -329,30 +365,27 @@ Basic Information:
   Serial Number: {device.serial}
   Model: {device.model or 'Unknown'}
   Brand: {device.brand or 'Unknown'}
-  Product: {device.product or 'Unknown'}
-  Device: {device.device or 'Unknown'}
+  Product: {getattr(device, 'product', 'Unknown')}
+  Device: {getattr(device, 'device', 'Unknown')}
 
 System Information:
   Android Version: {device.android_version or 'Unknown'}
-  API Level: {device.api_level or 'Unknown'}
-  Build ID: {device.build_id or 'Unknown'}
-  Security Patch: {device.security_patch or 'Unknown'}
+  API Level: {getattr(device, 'api_level', 'Unknown')}
+  Build ID: {getattr(device, 'build_id', 'Unknown')}
+  Security Patch: {getattr(device, 'security_patch', 'Unknown')}
 
 Connection Information:
-  Connection Type: {device.connection_type.upper()}
-  ADB Status: {'Connected' if device.connection_type == 'adb' else 'Not Available'}
-  Fastboot Status: {'Connected' if device.connection_type == 'fastboot' else 'Not Available'}
+  Connection Type: {device.connection_type}
+  Status: {getattr(device, 'status', 'Unknown')}
 
-Security Status:
-  FRP Status: {device.frp_status if device.frp_status else 'Unknown'}
-  Bootloader: {device.bootloader_status or 'Unknown'}
-  Root Status: {device.root_status or 'Unknown'}
-  Encryption: {device.encryption_status or 'Unknown'}
+Security Information:
+  FRP Status: {device.frp_status or 'Unknown'}
+  Bootloader: {getattr(device, 'bootloader_status', 'Unknown')}
+  Root Status: {getattr(device, 'root_status', 'Unknown')}
 
 Hardware Information:
-  CPU Architecture: {device.cpu_arch or 'Unknown'}
-  RAM: {device.ram_size or 'Unknown'}
-  Storage: {device.storage_size or 'Unknown'}
+  Chipset: {getattr(device, 'chipset', 'Unknown')}
+  IMEI: {getattr(device, 'imei', 'Not Available')}
 
 Bypass Compatibility:
   ADB Methods: {'Available' if device.connection_type == 'adb' else 'Not Available'}
@@ -487,3 +520,86 @@ Bypass Recommendations:
     def get_selected_device(self) -> Optional[DeviceInfo]:
         """Get the currently selected device"""
         return self.selected_device
+
+    def enable_samsung_adb(self):
+        """Enable ADB on Samsung device"""
+        enabler = SamsungADBEnabler()
+        ports = enabler.get_samsung_modem_ports()
+        
+        if not ports:
+            messagebox.showerror("Error", "No Samsung modem device found.\n\nPlease connect your device via USB and ensure it is in the *#0*# test mode screen.")
+            return
+
+        # Default to first port found
+        target_port_info = ports[0]
+        
+        if self.selected_device:
+            # 1. Check if we have a direct modem port mapping from DeviceManager
+            if hasattr(self.selected_device, 'modem_port') and self.selected_device.modem_port:
+                 for p in ports:
+                     if p.device == self.selected_device.modem_port:
+                         target_port_info = p
+                         break
+            
+            # 2. Check if the selected device IS a modem device (legacy check)
+            elif self.selected_device.connection_type == 'modem':
+                 for p in ports:
+                     if p.device == self.selected_device.serial:
+                         target_port_info = p
+                         break
+            
+            # 3. Try to match by serial number if available
+            else:
+                 for p in ports:
+                     # Check if port info contains the serial of the selected device
+                     # e.g. /dev/cu.usbmodem<SERIAL>
+                     if self.selected_device.serial and self.selected_device.serial in p.device:
+                         target_port_info = p
+                         break
+        
+        # Ask user to confirm
+        if not messagebox.askokcancel("Enable ADB", f"Found Samsung device at {target_port_info.device}.\n\n1. On your phone, go to Emergency Dialer.\n2. Dial *#0*# and wait for the test screen.\n\nClick OK to start the enabling process."):
+            return
+
+        # Run via thread
+        progress_window = tk.Toplevel(self)
+        progress_window.title("Enabling ADB")
+        progress_window.geometry("400x150")
+        progress_window.transient(self)
+        progress_window.grab_set()
+        
+        # Center the window
+        progress_window.update_idletasks()
+        x = (progress_window.winfo_screenwidth() // 2) - (400 // 2)
+        y = (progress_window.winfo_screenheight() // 2) - (150 // 2)
+        progress_window.geometry(f"400x150+{x}+{y}")
+        
+        lbl = ttk.Label(progress_window, text="Starting...", wraplength=350, justify=tk.CENTER)
+        lbl.pack(pady=20, padx=20)
+        
+        progress = ttk.Progressbar(progress_window, mode='indeterminate')
+        progress.pack(fill=tk.X, padx=20, pady=10)
+        progress.start()
+        
+        def run_thread():
+            def callback(msg):
+                try:
+                    self.after(0, lambda: lbl.configure(text=msg))
+                except:
+                    pass
+                
+            success = enabler.enable_adb(target_port_info.device, progress_callback=callback)
+            
+            try:
+                self.after(0, lambda: progress.stop())
+                self.after(0, lambda: progress_window.destroy())
+                
+                if success:
+                    self.after(0, lambda: messagebox.showinfo("Success", "ADB Enabling sequence completed.\n\nPlease check your phone for 'Allow USB Debugging' popup and allow it.\n\nThen click Refresh to see your device."))
+                    self.after(0, self.refresh_devices)
+                else:
+                    self.after(0, lambda: messagebox.showerror("Error", "Failed to enable ADB. Check connections and try again."))
+            except:
+                pass
+
+        threading.Thread(target=run_thread, daemon=True).start()

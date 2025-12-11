@@ -12,11 +12,32 @@ from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import json
 from dataclasses import dataclass
+import serial.tools.list_ports
+from .samsung_adb_enabler import SamsungADBEnabler
 
 @dataclass
 class DeviceInfo:
     """Device information container"""
     serial: str
+    model: str
+    manufacturer: str
+    android_version: str
+    sdk_version: str
+    bootloader_version: str
+    frp_status: str
+    connection_type: str  # adb, fastboot, download, modem
+    chipset: str = "unknown"
+    imei: str = ""
+    brand: str = "unknown"
+    bootloader_status: str = "unknown"
+    root_status: str = "unknown"
+    security_patch: str = "unknown"
+    encryption_status: str = "unknown"
+    api_level: str = "unknown"
+    build_id: str = "unknown"
+    product: str = "unknown"
+    device: str = "unknown"
+    modem_port: str = "" # Associated modem port for exploit access
     model: str
     manufacturer: str
     android_version: str
@@ -29,6 +50,12 @@ class DeviceInfo:
     brand: str = "unknown"
     bootloader_status: str = "unknown"
     root_status: str = "unknown"
+    security_patch: str = "unknown"
+    encryption_status: str = "unknown"
+    api_level: str = "unknown"
+    build_id: str = "unknown"
+    product: str = "unknown"
+    device: str = "unknown"
     
     def to_dict(self) -> Dict:
         return {
@@ -110,6 +137,14 @@ class DeviceManager:
         download_devices = self._scan_download_mode_devices()
         devices.extend(download_devices)
         
+        # Update connected_devices BEFORE modem scan so matching works correctly
+        self.connected_devices = devices
+        
+        # Scan Samsung modems (merged into existing devices if matched)
+        modem_devices = self.scan_samsung_modems()
+        devices.extend(modem_devices)
+        
+        # Final update with any new modem-only devices
         self.connected_devices = devices
         self.logger.info(f"Found {len(devices)} connected device(s)")
         
@@ -142,16 +177,24 @@ class DeviceManager:
             for line in lines:
                 self.logger.debug(f"Processing line: '{line}'")
                 if line.strip():
-                    # Split by whitespace and get the first two parts (serial and status)
+                    # Parse device line: serial status [usb:X-Y] [product:X] [model:X] [device:X] [transport_id:X]
                     parts = line.split()
                     if len(parts) >= 2:
                         serial = parts[0]
                         status = parts[1]
-                        self.logger.debug(f"Found device: serial={serial}, status={status}")
+                        
+                        # Extract metadata from the device line
+                        metadata = {}
+                        for part in parts[2:]:
+                            if ':' in part:
+                                key, value = part.split(':', 1)
+                                metadata[key] = value
+                        
+                        self.logger.debug(f"Found device: serial={serial}, status={status}, metadata={metadata}")
                         
                         if status in ['device', 'recovery']:
                             self.logger.debug(f"Getting device info for authorized device: {serial}")
-                            device_info = self._get_adb_device_info(serial)
+                            device_info = self._get_adb_device_info(serial, metadata)
                             if device_info:
                                 self.logger.debug(f"Successfully got device info for {serial}")
                                 devices.append(device_info)
@@ -160,7 +203,7 @@ class DeviceManager:
                         elif status == 'unauthorized':
                             self.logger.debug(f"Getting device info for unauthorized device: {serial}")
                             # Handle unauthorized devices for FRP bypass scenarios
-                            device_info = self._get_unauthorized_device_info(serial)
+                            device_info = self._get_unauthorized_device_info(serial, metadata)
                             if device_info:
                                 self.logger.debug(f"Successfully got unauthorized device info for {serial}")
                                 devices.append(device_info)
@@ -205,6 +248,77 @@ class DeviceManager:
         
         return devices
     
+    
+    def scan_samsung_modems(self) -> List[DeviceInfo]:
+        """Scan for Samsung devices in modem mode"""
+        self.logger.info("Scanning for Samsung modem devices...")
+        new_devices = []
+        
+        try:
+            ports = list(serial.tools.list_ports.comports())
+            for port in ports:
+                if port.vid == 0x04E8: # Samsung VID
+                    self.logger.debug(f"Found Samsung modem: {port.device}")
+                    
+                    # Logic to prevent duplicates:
+                    # Check if this modem corresponds to an existing connected device
+                    # The modem port usually contains the serial number (e.g. /dev/cu.usbmodem<SERIAL> or COM<X>)
+                    # On Mac/Linux, the serial is often in the device path. On Windows, we might need port.serial_number
+                    
+                    matched_existing = False
+                    target_device = None
+                    
+                    # Try to get serial from port
+                    port_serial = getattr(port, 'serial_number', '')
+                    
+                    # Check against existing devices
+                    for device in self.connected_devices:
+                        # Check strict serial match if available
+                        if port_serial and device.serial == port_serial:
+                            self.logger.info(f"Matched modem {port.device} to existing device {device.serial}")
+                            device.modem_port = port.device
+                            matched_existing = True
+                            target_device = device
+                            break
+                            
+                        # Check fuzzy match in port name (common on Mac/Linux)
+                        # e.g. device.serial = R5CW418JMSL, port.device = /dev/cu.usbmodemR5CW418JMSL2
+                        if device.serial and len(device.serial) > 5 and device.serial in port.device:
+                             self.logger.info(f"Fuzzy matched modem {port.device} to existing device {device.serial}")
+                             device.modem_port = port.device
+                             matched_existing = True
+                             target_device = device
+                             break
+                    
+                    if matched_existing and target_device:
+                        # Modem matched to existing device, just mark it
+                        # Don't try to read info here as it can block the port
+                        continue
+
+                    # If no match found, create a new device entry
+                    # Don't read info during scan to avoid port blocking
+                    device_info = DeviceInfo(
+                        serial=port.device, # Use port as serial for modem devices
+                        model="Samsung Modem",
+                        manufacturer="Samsung",
+                        android_version="Unknown",
+                        sdk_version="Unknown",
+                        bootloader_version="Unknown",
+                        frp_status="Unknown",
+                        connection_type="modem",
+                        chipset="Unknown",
+                        brand="Samsung",
+                        bootloader_status="Unknown",
+                        root_status="Unknown",
+                        device=port.description,
+                        modem_port=port.device 
+                    )
+                    new_devices.append(device_info)
+        except Exception as e:
+            self.logger.error(f"Error scanning samsung modems: {e}")
+            
+        return new_devices
+
     def _scan_download_mode_devices(self) -> List[DeviceInfo]:
         """Scan for devices in download mode (placeholder)"""
         # This would implement detection for Samsung Download Mode,
@@ -212,36 +326,49 @@ class DeviceManager:
         # For now, return empty list
         return []
     
-    def _get_adb_device_info(self, serial: str) -> Optional[DeviceInfo]:
+    def _get_adb_device_info(self, serial: str, metadata: Dict[str, str] = None) -> Optional[DeviceInfo]:
         """Get detailed information for an ADB device"""
+        if metadata is None:
+            metadata = {}
+            
         try:
             self.logger.debug(f"Getting device properties for {serial}")
-            # Get device properties
+            # Get device properties via shell
             props = self._get_device_properties(serial)
             self.logger.debug(f"Got {len(props)} properties for {serial}")
             
-            # Check FRP status
-            self.logger.debug(f"Checking FRP status for {serial}")
-            frp_status = self._check_frp_status(serial)
-            self.logger.debug(f"FRP status for {serial}: {frp_status}")
-            
-            manufacturer = props.get('ro.product.manufacturer', 'unknown')
-            device_info = DeviceInfo(
-                serial=serial,
-                model=props.get('ro.product.model', 'unknown'),
-                manufacturer=manufacturer,
-                android_version=props.get('ro.build.version.release', 'unknown'),
-                sdk_version=props.get('ro.build.version.sdk', 'unknown'),
-                bootloader_version=props.get('ro.bootloader', 'unknown'),
-                frp_status=frp_status,
-                connection_type='adb',
-                chipset=props.get('ro.hardware', 'unknown'),
-                brand=manufacturer,  # Use manufacturer as brand
-                bootloader_status='unknown',  # Would need additional checks
-                root_status='unknown'  # Would need additional checks
-            )
-            
-            self.logger.debug(f"Created device info for {serial}: {device_info.model} ({device_info.manufacturer})")
+            # If we got properties from shell, use them
+            if props:
+                # Check FRP status
+                self.logger.debug(f"Checking FRP status for {serial}")
+                frp_status = self._check_frp_status(serial)
+                self.logger.debug(f"FRP status for {serial}: {frp_status}")
+                
+                manufacturer = props.get('ro.product.manufacturer', 'unknown')
+                device_info = DeviceInfo(
+                    serial=serial,
+                    model=props.get('ro.product.model', 'unknown'),
+                    manufacturer=manufacturer,
+                    android_version=props.get('ro.build.version.release', 'unknown'),
+                    sdk_version=props.get('ro.build.version.sdk', 'unknown'),
+                    bootloader_version=props.get('ro.bootloader', 'unknown'),
+                    frp_status=frp_status,
+                    connection_type='adb',
+                    chipset=props.get('ro.hardware', 'unknown'),
+                    brand=manufacturer,
+                    bootloader_status='unknown',
+                    root_status='unknown'
+                )
+                
+                self.logger.debug(f"Created device info for {serial}: {device_info.model} ({device_info.manufacturer})")
+            else:
+                # Shell commands failed, use metadata fallback
+                self.logger.warning(f"Shell access restricted for {serial}, using metadata fallback")
+                device_info = self._create_fallback_device_info(serial, metadata)
+                
+                if not device_info:
+                    self.logger.error(f"Failed to create fallback device info for {serial}")
+                    return None
             
             # Try to get IMEI (may require root)
             try:
@@ -254,12 +381,23 @@ class DeviceManager:
         
         except Exception as e:
             self.logger.error(f"Error getting device info for {serial}: {e}")
-            return None
+            # Try fallback even on exception
+            try:
+                return self._create_fallback_device_info(serial, metadata)
+            except:
+                return None
     
-    def _get_unauthorized_device_info(self, serial: str) -> Optional[DeviceInfo]:
+    def _get_unauthorized_device_info(self, serial: str, metadata: Dict[str, str] = None) -> Optional[DeviceInfo]:
         """Get basic device info for unauthorized devices (FRP bypass scenarios)"""
+        if metadata is None:
+            metadata = {}
+            
         try:
             self.logger.info(f"Creating device info for unauthorized device: {serial}")
+            
+            # Try to use metadata if available
+            if metadata:
+                return self._create_fallback_device_info(serial, metadata, connection_type='adb_unauthorized')
             
             # Create basic device info for FRP bypass
             device_info = DeviceInfo(
@@ -283,6 +421,78 @@ class DeviceManager:
             
         except Exception as e:
             self.logger.error(f"Error creating unauthorized device info for {serial}: {e}")
+            return None
+    
+    def _create_fallback_device_info(self, serial: str, metadata: Dict[str, str], connection_type: str = 'adb_restricted') -> Optional[DeviceInfo]:
+        """Create device info from metadata when shell access is restricted"""
+        try:
+            # Extract model from metadata
+            model = metadata.get('model', 'unknown')
+            product = metadata.get('product', 'unknown')
+            device = metadata.get('device', 'unknown')
+            
+            # Infer manufacturer from model name
+            manufacturer = 'unknown'
+            brand = 'unknown'
+            
+            if model != 'unknown':
+                model_upper = model.upper()
+                # Samsung models typically start with SM-, GT-, or SCH-
+                if model_upper.startswith(('SM-', 'SM_', 'GT-', 'SCH-', 'SPH-')):
+                    manufacturer = 'Samsung'
+                    brand = 'Samsung'
+                # Google Pixel devices
+                elif 'PIXEL' in model_upper or model_upper.startswith('G-'):
+                    manufacturer = 'Google'
+                    brand = 'Google'
+                # Xiaomi/Redmi devices
+                elif any(x in model_upper for x in ['REDMI', 'MI ', 'POCO']):
+                    manufacturer = 'Xiaomi'
+                    brand = 'Xiaomi'
+                # Huawei devices
+                elif model_upper.startswith(('HUAWEI', 'HONOR', 'HW-', 'H-')):
+                    manufacturer = 'Huawei'
+                    brand = 'Huawei'
+                # OnePlus devices
+                elif model_upper.startswith('ONEPLUS') or 'ONEPLUS' in model_upper:
+                    manufacturer = 'OnePlus'
+                    brand = 'OnePlus'
+                # Oppo devices
+                elif model_upper.startswith(('OPPO', 'CPH', 'PCHM', 'PCAM')):
+                    manufacturer = 'Oppo'
+                    brand = 'Oppo'
+                # Vivo devices
+                elif model_upper.startswith('VIVO') or model_upper.startswith('V'):
+                    manufacturer = 'Vivo'
+                    brand = 'Vivo'
+                # Realme devices
+                elif model_upper.startswith('REALME') or model_upper.startswith('RMX'):
+                    manufacturer = 'Realme'
+                    brand = 'Realme'
+            
+            # Log the fallback creation
+            self.logger.info(f"Creating fallback device info for {serial}: model={model}, manufacturer={manufacturer}")
+            
+            device_info = DeviceInfo(
+                serial=serial,
+                model=model,
+                manufacturer=manufacturer,
+                android_version='unknown',  # Cannot determine without shell access
+                sdk_version='unknown',
+                bootloader_version='unknown',
+                frp_status='likely_locked',  # Restricted access suggests FRP lock
+                connection_type=connection_type,
+                chipset='unknown',
+                brand=brand,
+                bootloader_status='unknown',
+                root_status='unknown'
+            )
+            
+            self.logger.info(f"Created fallback device info: {device_info.model} ({device_info.manufacturer})")
+            return device_info
+            
+        except Exception as e:
+            self.logger.error(f"Error creating fallback device info for {serial}: {e}")
             return None
     
     def _get_fastboot_device_info(self, serial: str) -> Optional[DeviceInfo]:

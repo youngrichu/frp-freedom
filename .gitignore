@@ -189,3 +189,9 @@ config_local.yaml
 *.db
 backups/
 temp/
+
+# Tool specific
+.trae/
+
+# Logs directory
+logs/

@@ -273,12 +273,23 @@ class BypassManager:
             if method.category not in ['interface', 'system']:
                 return False
         
+        # Handle restricted devices (FRP lock, Test Mode, etc.)
+        if device.connection_type == 'adb_restricted':
+            # Device is connected but shell access is blocked
+            # Only allow interface methods that don't require shell access
+            if method.category == 'adb':
+                return False  # ADB methods need shell access
+            # Allow interface and some system methods
+            if method.category not in ['interface', 'system']:
+                return False
+        
         # Check manufacturer (skip for unknown devices)
         if device.manufacturer != "Unknown" and device.manufacturer.lower() not in [d.lower() for d in method.supported_devices]:
             return False
         
-        # Check Android version (skip for unknown versions)
-        if device.android_version != "Unknown":
+        # Check Android version (skip for unknown versions OR restricted devices)
+        # For restricted devices, we can't determine Android version, so allow all methods
+        if device.android_version != "Unknown" and device.connection_type not in ['adb_restricted', 'adb_unauthorized']:
             device_version = device.android_version
             if device_version not in method.android_versions:
                 # Try to match major version
@@ -287,11 +298,12 @@ class BypassManager:
                 if device_major not in method_majors:
                     return False
         
-        # Check connection type requirements
-        if method.category == 'adb' and device.connection_type not in ['adb', 'adb_unauthorized']:
-            return False
-        elif method.category == 'hardware' and device.connection_type not in ['fastboot', 'download']:
-            return False
+        # Check connection type requirements for normal devices
+        if device.connection_type not in ['adb_unauthorized', 'adb_restricted']:
+            if method.category == 'adb' and device.connection_type not in ['adb']:
+                return False
+            elif method.category == 'hardware' and device.connection_type not in ['fastboot', 'download']:
+                return False
         
         return True
     

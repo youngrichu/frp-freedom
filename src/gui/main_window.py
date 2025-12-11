@@ -422,15 +422,64 @@ Proceed only if you understand the risks and legal implications.
             }
         )
         
-        # Create and show progress window
-        self.progress_window = ProgressDialog(
-            self.root,
-            self.selected_device,
-            self.selected_methods,
-            self.bypass_manager,
-            self.on_bypass_completed
+        # Show info message
+        messagebox.showinfo(
+            "Bypass Execution",
+            f"Starting bypass execution with {len(self.selected_methods)} method(s).\n\n"
+            f"This is a demonstration. In a production environment, this would execute the selected bypass methods.\n\n"
+            f"Selected methods:\n" + "\n".join(f"• {m.name}" for m in self.selected_methods)
         )
-        self.progress_window.start_execution()
+        
+        # Run execution in background thread to avoid freezing UI
+        threading.Thread(target=self._run_bypass_process, daemon=True).start()
+
+    def _run_bypass_process(self):
+        """Execute bypass methods in background"""
+        results = []
+        
+        for method in self.selected_methods:
+            # Update status
+            self.root.after(0, self.update_progress, f"Executing {method.name}...")
+            
+            # Define progress callback
+            def progress_callback(status, percent):
+                self.root.after(0, self.update_progress, f"{method.name}: {status} ({percent}%)")
+            
+            try:
+                # Execute bypass
+                result_dict = self.bypass_manager.execute_bypass(
+                    self.selected_device,
+                    method.name,
+                    progress_callback
+                )
+                
+                # Convert dict to result object expected by reporting
+                from ..bypass.bypass_manager import BypassResult
+                is_success = result_dict.get('result') == BypassResult.SUCCESS
+                
+                result_obj = type('BypassExecutionResult', (object,), {
+                    'method_name': method.name,
+                    'success': is_success,
+                    'execution_time': result_dict.get('details', {}).get('execution_time', 0),
+                    'message': result_dict.get('message', ''),
+                    'result_code': result_dict.get('result')
+                })()
+                results.append(result_obj)
+                
+            except Exception as e:
+                self.logger.error(f"Error executing {method.name}: {e}")
+                # Create error result
+                result_obj = type('BypassExecutionResult', (object,), {
+                    'method_name': method.name,
+                    'success': False,
+                    'execution_time': 0,
+                    'message': str(e),
+                    'result_code': None
+                })()
+                results.append(result_obj)
+        
+        # Report completion on main thread
+        self.root.after(0, self.on_bypass_completed, results)
     
     def on_bypass_completed(self, results):
         """Handle bypass completion"""
@@ -464,7 +513,7 @@ Proceed only if you understand the risks and legal implications.
                 "Bypass Complete",
                 f"Bypass completed successfully!\n\n"
                 f"Successful methods: {success_count}/{total_count}\n"
-                f"Check the device to verify FRP bypass."
+                f"Check the device to verify FP bypass."
             )
         else:
             messagebox.showwarning(
@@ -472,6 +521,7 @@ Proceed only if you understand the risks and legal implications.
                 f"All bypass methods failed.\n\n"
                 f"Please try different methods or check device compatibility."
             )
+    
     
     def on_results_closed(self):
         """Handle results window closing"""
@@ -516,8 +566,11 @@ Proceed only if you understand the risks and legal implications.
     
     def on_device_selected(self, device: DeviceInfo):
         """Handle device selection"""
+        print(f"[DEBUG] Device selected: {device.serial}")
         self.selected_device = device
+        print(f"[DEBUG] Enabling Next button...")
         self.next_button.config(state='normal')
+        print(f"[DEBUG] Next button state: {self.next_button['state']}")
         
         # Log device selection
         self.audit_logger.log_event(
@@ -542,9 +595,15 @@ Proceed only if you understand the risks and legal implications.
                 import time
                 while True:
                     devices = self.device_manager.scan_devices()
-                    # Update device selection frame if it exists
+                    # Update device selection frame if it exists and is valid
                     if hasattr(self, 'device_frame') and self.device_frame:
-                        self.device_frame.after(0, self.device_frame.update_device_list, devices)
+                        try:
+                            # Check if widget still exists before scheduling update
+                            if self.device_frame.winfo_exists():
+                                self.device_frame.after(0, self.device_frame.update_device_list, devices)
+                        except (tk.TclError, AttributeError):
+                            # Widget was destroyed, skip this update
+                            pass
                     time.sleep(5)  # Scan every 5 seconds
             except Exception as e:
                 self.logger.error(f"Device scanning error: {e}")
