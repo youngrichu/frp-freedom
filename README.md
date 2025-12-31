@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-
+**中文（简体）**: [README_zh.md](README_zh.md)
 **FRP Freedom** is a legitimate Android Factory Reset Protection (FRP) bypass tool designed for device recovery by legitimate device owners. This tool provides a comprehensive solution for bypassing FRP locks when users have lost access to their Google accounts or forgotten their credentials.
 
 ## ⚠️ Important Legal Notice
