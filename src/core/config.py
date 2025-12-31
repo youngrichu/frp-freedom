@@ -15,16 +15,32 @@ class Config:
     """Application configuration manager"""
     
     def __init__(self, config_file: str = None):
+        # Initialize paths and allow overrides via environment variables
         self.app_dir = Path.home() / ".frp_freedom"
-        self.config_file = config_file or self.app_dir / "config.yaml"
-        self.logs_dir = self.app_dir / "logs"
+
+        # Environment override for config file path
+        env_config = os.getenv('FRP_FREEDOM_CONFIG')
+        if config_file:
+            self.config_file = Path(config_file)
+        elif env_config:
+            self.config_file = Path(env_config)
+        else:
+            self.config_file = self.app_dir / "config.yaml"
+
+        # Environment override for logs directory
+        env_logs = os.getenv('FRP_FREEDOM_LOG_DIR')
+        if env_logs:
+            self.logs_dir = Path(env_logs)
+        else:
+            self.logs_dir = self.app_dir / "logs"
+
         self.cache_dir = self.app_dir / "cache"
-        
+
         # Create directories if they don't exist
         self.app_dir.mkdir(exist_ok=True)
-        self.logs_dir.mkdir(exist_ok=True)
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(exist_ok=True)
-        
+
         # Default configuration
         self.default_config = {
             "app": {
@@ -33,6 +49,7 @@ class Config:
                 "auto_update": True,
                 "language": "en"
             },
+
             "security": {
                 "max_attempts_per_device": 3,
                 "encrypt_logs": True,
@@ -55,7 +72,12 @@ class Config:
                 "wizard_mode": True
             }
         }
-        
+
+        # Honor FRP_FREEDOM_DEBUG environment variable if set (true/1/yes/on)
+        debug_env = os.getenv('FRP_FREEDOM_DEBUG')
+        if debug_env is not None:
+            self.default_config['app']['debug_mode'] = str(debug_env).lower() in ('1', 'true', 'yes', 'on')
+
         self.config = self.load_config()
         
     def load_config(self) -> Dict[str, Any]:
