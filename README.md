@@ -1,6 +1,6 @@
 # FRP Freedom - Android FRP Bypass Tool
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 
@@ -57,7 +57,7 @@
 ## 📋 Requirements
 
 ### System Requirements
-- **Python**: 3.8 or higher
+- **Python**: 3.9 or higher
 - **Operating System**: Windows 10+, macOS 10.14+, Ubuntu 18.04+
 - **RAM**: 4GB minimum, 8GB recommended
 - **Storage**: 500MB free space
