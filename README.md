@@ -103,7 +103,28 @@
    python main.py
    ```
 
-### Option 2: Standalone Executable (Coming Soon)
+### Option 2: From Source using UV (Recommended for Development)
+
+[UV](https://docs.astral.sh/uv/) is great for managing Python installation, version, dependencies and virtual env.
+
+1. **Clone the Repository**  
+   See Option 1.1.
+
+2. **Install UV**
+   ```bash
+   # On Windows  
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+   # On macOS/Linux  
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+3. **Run the Application**
+   ```bash
+   uv run main.py
+   ```
+
+### Option 3: Standalone Executable (Coming Soon)
 
 Pre-built executables will be available for download from the releases page.
 
