@@ -1,0 +1,24 @@
+[project]
+name = "frp-freedom"
+version = "1.0.0"
+description = "FRP Freedom is a legitimate Android Factory Reset Protection (FRP) bypass tool designed for device recovery by legitimate device owners. This tool provides a comprehensive solution for bypassing FRP locks when users have lost access to their Google accounts or forgotten their credentials."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "black>=23.7.0",
+    "coloredlogs>=15.0",
+    "cryptography>=41.0.0",
+    "cx-freeze>=6.15.0",
+    "flake8>=6.0.0",
+    "libusb1>=3.0.0",
+    "pillow>=10.0.0",
+    "psutil>=5.9.0",
+    "pyinstaller>=5.13.0",
+    "pyserial>=3.5",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pyusb>=1.2.1",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "tkinter-tooltip>=1.1.0",
+]
