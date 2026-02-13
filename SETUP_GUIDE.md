@@ -7,7 +7,7 @@ Before using FRP Freedom, you need to install and configure several tools and de
 ### 1. System Requirements
 
 - **Operating System**: Windows 10/11, macOS 10.15+, or Linux (Ubuntu 18.04+)
-- **Python**: Version 3.8 or higher
+- **Python**: Version 3.9 or higher
 - **USB Port**: Available USB port for device connection
 - **Internet Connection**: For downloading tools and dependencies
 

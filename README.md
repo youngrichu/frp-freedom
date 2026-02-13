@@ -1,6 +1,6 @@
 # FRP Freedom - Android FRP Bypass Tool
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 **中文（简体）**: [README_zh.md](README_zh.md)
@@ -57,7 +57,7 @@
 ## 📋 Requirements
 
 ### System Requirements
-- **Python**: 3.8 or higher
+- **Python**: 3.9 or higher
 - **Operating System**: Windows 10+, macOS 10.14+, Ubuntu 18.04+
 - **RAM**: 4GB minimum, 8GB recommended
 - **Storage**: 500MB free space
@@ -103,7 +103,28 @@
    python main.py
    ```
 
-### Option 2: Standalone Executable (Coming Soon)
+### Option 2: From Source using UV (Recommended for Development)
+
+[UV](https://docs.astral.sh/uv/) is great for managing Python installation, version, dependencies and virtual env.
+
+1. **Clone the Repository**  
+   See Option 1.1.
+
+2. **Install UV**
+   ```bash
+   # On Windows  
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+   # On macOS/Linux  
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+3. **Run the Application**
+   ```bash
+   uv run main.py
+   ```
+
+### Option 3: Standalone Executable (Coming Soon)
 
 Pre-built executables will be available for download from the releases page.
 
