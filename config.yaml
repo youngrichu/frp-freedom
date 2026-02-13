@@ -1,68 +1,25 @@
 # FRP Freedom Configuration File
-# This file contains default settings for the FRP Freedom application
+# Updated and simplified per user request
 
-# Application Settings
 app:
   version: "1.0.0"
-  name: "FRP Freedom"
   debug_mode: false
-  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-  data_directory: "./data"
-  temp_directory: "./temp"
+  log_level: "INFO"
 
-# Security and Ethics Settings
 security:
-  # Audit trail settings
   audit_trail_enabled: true
-  audit_log_retention_days: 90
-  
-  # Log encryption
   log_encryption_enabled: true
-  log_encryption_algorithm: "AES-256-GCM"
-  
-  # Rate limiting to prevent abuse
   rate_limiting_enabled: true
-  max_attempts_per_hour: 5
-  max_attempts_per_day: 20
-  
-  # Session management
-  session_timeout: 1800  # 30 minutes
-  auto_logout_enabled: true
 
-# Device Management Settings
 device:
-  # Auto-detection settings
   auto_detect_enabled: true
-  auto_detect_interval: 5  # seconds
-  
-  # Connection timeouts
-  connection_timeout: 30  # seconds
-  command_timeout: 60  # seconds
-  
-  # Supported connection types
-  supported_connections:
-    - "adb"
-    - "fastboot"
-    - "download"
-  
-  # Device compatibility
-  min_android_version: 5.0
-  max_android_version: 15.0
-  
-  # Supported brands (for optimization)
-  supported_brands:
-    - "samsung"
-    - "google"
-    - "huawei"
-    - "xiaomi"
-    - "oneplus"
-    - "lg"
-    - "sony"
-    - "motorola"
-    - "htc"
-    - "oppo"
-    - "vivo"
-    - "realme"
+  connection_timeout: 30
+  command_timeout: 60
+
+ui:
+  theme: "default"
+  window_size: "1024x768"
+  remember_window_position: true
 
 # Bypass Method Settings
 bypass:
