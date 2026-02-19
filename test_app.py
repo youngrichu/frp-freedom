@@ -165,49 +165,50 @@ def test_notification_system():
     print("\n🔔 Testing AI Notification System...")
     
     # Create a mock parent window for testing
-    import tkinter as tk
-    root = tk.Tk()
-    root.withdraw()  # Hide the window
-    
-    notification_system = AINotificationSystem(root)
-    
-    # Test different notification types
-    print("  ✓ Testing notification creation...")
-    
-    # Test method recommendation
-    notification_system.notify_method_recommendation(
-        "adb_setup_wizard", 0.85,
-        lambda: print("Method selected")
-    )
-    
-    # Test device analysis completion
-    notification_system.notify_device_analysis_complete(
-        0.75,
-        ["adb_enable_developer", "samsung_combination_file"]
-    )
-    
-    # Test method failure insight
-    notification_system.notify_method_failure_insight(
-        "failed_method",
-        "suggested_alternative",
-        lambda: print("Alternative tried")
-    )
-    
-    # Test learning update
-    notification_system.notify_learning_update(
-        "Improved recommendations based on recent successes"
-    )
-    
-    print(f"    - Created {len(notification_system.notification_widgets)} notifications")
-    
-    # Test notification queue functionality
-    print("  ✓ Testing notification queue...")
-    queue_size = len(notification_system.notification_queue)
-    print(f"    - Queue size: {queue_size}")
-    print("    - Notification system working correctly")
-    
-    # Clean up
-    root.destroy()
+    with patch('tkinter.Tk'), patch('tkinter.Toplevel'), patch('tkinter.Label'), patch('tkinter.Button'):
+        import tkinter as tk
+        root = tk.Tk()
+        # root.withdraw() # Mock doesn't need this, but calling it is fine
+
+        notification_system = AINotificationSystem(root)
+
+        # Test different notification types
+        print("  ✓ Testing notification creation...")
+
+        # Test method recommendation
+        notification_system.notify_method_recommendation(
+            "adb_setup_wizard", 0.85,
+            lambda: print("Method selected")
+        )
+
+        # Test device analysis completion
+        notification_system.notify_device_analysis_complete(
+            0.75,
+            ["adb_enable_developer", "samsung_combination_file"]
+        )
+
+        # Test method failure insight
+        notification_system.notify_method_failure_insight(
+            "failed_method",
+            "suggested_alternative",
+            lambda: print("Alternative tried")
+        )
+
+        # Test learning update
+        notification_system.notify_learning_update(
+            "Improved recommendations based on recent successes"
+        )
+
+        print(f"    - Created {len(notification_system.notification_widgets)} notifications")
+
+        # Test notification queue functionality
+        print("  ✓ Testing notification queue...")
+        queue_size = len(notification_system.notification_queue)
+        print(f"    - Queue size: {queue_size}")
+        print("    - Notification system working correctly")
+
+        # Clean up
+        root.destroy()
     
     print("  ✅ Notification System tests passed!")
 

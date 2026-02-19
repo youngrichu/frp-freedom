@@ -383,7 +383,8 @@ class BypassExecutionFrame(ttk.Frame):
             
         except Exception as e:
             self.logger.exception(f"Fatal error during bypass execution: {e}")
-            self.after(0, lambda: self.log_message(f"Fatal error: {str(e)}", 'ERROR'))
+            error_msg = str(e)
+            self.after(0, lambda: self.log_message(f"Fatal error: {error_msg}", 'ERROR'))
             self.after(0, self._execution_completed)
     
     def _should_stop_on_success(self) -> bool:

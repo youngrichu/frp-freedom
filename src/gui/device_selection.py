@@ -264,7 +264,8 @@ Device Connection Guide
                 self.after(0, lambda: self.update_device_list(devices))
             except Exception as e:
                 self.logger.error(f"Error scanning devices: {e}")
-                self.after(0, lambda: self.status_label.configure(text=f"Error: {e}"))
+                error_msg = str(e)
+                self.after(0, lambda: self.status_label.configure(text=f"Error: {error_msg}"))
         
         # Run scan in background thread
         scan_thread = threading.Thread(target=scan_in_background, daemon=True)
