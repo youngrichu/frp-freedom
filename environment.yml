@@ -1,0 +1,10 @@
+name: frp-freedom
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytest
+  - flake8
+  - pip
+  - pip:
+    - -r requirements.txt

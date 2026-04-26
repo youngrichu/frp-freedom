@@ -10,25 +10,41 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v3
       with:
-        python-version: '3.10'
-    - name: Add conda to system path
-      run: |
-        # $CONDA is an environment variable pointing to the root of the miniconda directory
-        echo $CONDA/bin >> $GITHUB_PATH
+        python-version: "3.10"
+        auto-activate-base: true
+        activate-environment: base
+
     - name: Install dependencies
+      shell: bash -el {0}
       run: |
-        conda env update --file environment.yml --name base
+        if [ -f environment.yml ]; then
+          echo "Found environment.yml — updating conda environment"
+          if command -v mamba >/dev/null 2>&1; then
+            mamba env update --file environment.yml --name base
+          else
+            conda env update --file environment.yml --name base
+          fi
+        elif [ -f requirements.txt ]; then
+          echo "No environment.yml found — falling back to pip install"
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+        else
+          echo "No environment.yml or requirements.txt found — aborting"
+          exit 1
+        fi
+
     - name: Lint with flake8
+      shell: bash -el {0}
       run: |
-        conda install flake8
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
     - name: Test with pytest
+      shell: bash -el {0}
       run: |
-        conda install pytest
         pytest
