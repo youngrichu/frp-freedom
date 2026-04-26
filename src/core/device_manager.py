@@ -8,6 +8,9 @@ import subprocess
 import re
 import time
 import logging
+import sys
+import os
+import shutil
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import json
@@ -38,24 +41,6 @@ class DeviceInfo:
     product: str = "unknown"
     device: str = "unknown"
     modem_port: str = "" # Associated modem port for exploit access
-    model: str
-    manufacturer: str
-    android_version: str
-    sdk_version: str
-    bootloader_version: str
-    frp_status: str
-    connection_type: str  # adb, fastboot, download
-    chipset: str = "unknown"
-    imei: str = ""
-    brand: str = "unknown"
-    bootloader_status: str = "unknown"
-    root_status: str = "unknown"
-    security_patch: str = "unknown"
-    encryption_status: str = "unknown"
-    api_level: str = "unknown"
-    build_id: str = "unknown"
-    product: str = "unknown"
-    device: str = "unknown"
     
     def to_dict(self) -> Dict:
         return {
@@ -91,13 +76,23 @@ class DeviceManager:
         if bundled_adb.exists():
             return bundled_adb
         
-        # Check system PATH
-        try:
-            result = subprocess.run(["which", "adb"], capture_output=True, text=True)
-            if result.returncode == 0:
-                return Path(result.stdout.strip())
-        except Exception:
-            pass
+        # Use shutil.which() which works on Windows, macOS, and Linux
+        adb_in_path = shutil.which("adb")
+        if adb_in_path:
+            self.logger.debug(f"Found ADB in PATH: {adb_in_path}")
+            return Path(adb_in_path)
+        
+        # Windows-specific: Check common Android SDK locations
+        if sys.platform == "win32":
+            common_paths = [
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk" / "platform-tools" / "adb.exe",
+                Path(os.environ.get("ProgramFiles", "")) / "Android" / "Sdk" / "platform-tools" / "adb.exe",
+                Path(os.path.expanduser("~")) / "AppData" / "Local" / "Android" / "Sdk" / "platform-tools" / "adb.exe",
+            ]
+            for path in common_paths:
+                if path.exists():
+                    self.logger.debug(f"Found ADB at: {path}")
+                    return path
         
         self.logger.warning("ADB binary not found. Some features may not work.")
         return None
@@ -109,13 +104,23 @@ class DeviceManager:
         if bundled_fastboot.exists():
             return bundled_fastboot
         
-        # Check system PATH
-        try:
-            result = subprocess.run(["which", "fastboot"], capture_output=True, text=True)
-            if result.returncode == 0:
-                return Path(result.stdout.strip())
-        except Exception:
-            pass
+        # Use shutil.which() which works on Windows, macOS, and Linux
+        fastboot_in_path = shutil.which("fastboot")
+        if fastboot_in_path:
+            self.logger.debug(f"Found fastboot in PATH: {fastboot_in_path}")
+            return Path(fastboot_in_path)
+        
+        # Windows-specific: Check common Android SDK locations
+        if sys.platform == "win32":
+            common_paths = [
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Android" / "Sdk" / "platform-tools" / "fastboot.exe",
+                Path(os.environ.get("ProgramFiles", "")) / "Android" / "Sdk" / "platform-tools" / "fastboot.exe",
+                Path(os.path.expanduser("~")) / "AppData" / "Local" / "Android" / "Sdk" / "platform-tools" / "fastboot.exe",
+            ]
+            for path in common_paths:
+                if path.exists():
+                    self.logger.debug(f"Found fastboot at: {path}")
+                    return path
         
         self.logger.warning("Fastboot binary not found. Some features may not work.")
         return None
@@ -223,6 +228,7 @@ class DeviceManager:
     def _scan_fastboot_devices(self) -> List[DeviceInfo]:
         """Scan for fastboot-connected devices"""
         if not self.fastboot_path:
+            self.logger.debug("Fastboot binary not found")
             return []
         
         devices = []
@@ -232,20 +238,42 @@ class DeviceManager:
                 capture_output=True, text=True, timeout=10
             )
             
+            self.logger.debug(f"Fastboot devices output: {result.stdout}")
+            self.logger.debug(f"Fastboot devices stderr: {result.stderr}")
+            
             if result.returncode != 0:
+                self.logger.error(f"Fastboot command failed: {result.stderr}")
                 return []
             
             lines = result.stdout.strip().split('\n')
+            self.logger.debug(f"Processing {len(lines)} fastboot device lines")
+            
             for line in lines:
-                if line.strip() and '\t' in line:
-                    serial = line.split('\t')[0]
-                    device_info = self._get_fastboot_device_info(serial)
-                    if device_info:
-                        devices.append(device_info)
+                line = line.strip()
+                if not line or line.startswith('*'):  # Skip empty lines and headers
+                    continue
+                
+                # Handle both space and tab delimiters
+                # Split by any whitespace and filter empty strings
+                parts = line.split()
+                if len(parts) >= 2:
+                    serial = parts[0]
+                    status = parts[1]
+                    
+                    self.logger.debug(f"Found fastboot device: serial={serial}, status={status}")
+                    
+                    if status == 'fastboot':  # Device is in fastboot mode
+                        device_info = self._get_fastboot_device_info(serial)
+                        if device_info:
+                            devices.append(device_info)
+                            self.logger.debug(f"Added fastboot device: {serial}")
+                        else:
+                            self.logger.warning(f"Failed to get info for fastboot device: {serial}")
         
         except Exception as e:
-            self.logger.error(f"Error scanning fastboot devices: {e}")
+            self.logger.error(f"Error scanning fastboot devices: {e}", exc_info=True)
         
+        self.logger.debug(f"Returning {len(devices)} fastboot devices")
         return devices
     
     
