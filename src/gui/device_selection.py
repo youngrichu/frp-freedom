@@ -596,10 +596,19 @@ Bypass Recommendations:
                 self.after(0, lambda: progress_window.destroy())
                 
                 if success:
-                    self.after(0, lambda: messagebox.showinfo("Success", "ADB Enabling sequence completed.\n\nPlease check your phone for 'Allow USB Debugging' popup and allow it.\n\nThen click Refresh to see your device."))
+                    self.after(0, lambda: messagebox.showinfo("Success", "ADB is now enabled.\n\nIf your phone shows an 'Allow USB Debugging' prompt, accept it.\n\nThen click Refresh to see your device."))
                     self.after(0, self.refresh_devices)
                 else:
-                    self.after(0, lambda: messagebox.showerror("Error", "Failed to enable ADB. Check connections and try again."))
+                    # Explain *why* rather than blaming the cable: a signing-token
+                    # refusal or a Knox Guard lock is not a connection problem.
+                    decision = getattr(enabler, 'last_verdict', None)
+                    if decision is not None:
+                        detail = decision.summary
+                        if decision.next_steps:
+                            detail += "\n\n" + "\n".join(f"- {step}" for step in decision.next_steps)
+                    else:
+                        detail = "Failed to enable ADB. Check connections and try again."
+                    self.after(0, lambda d=detail: messagebox.showerror("Cannot enable ADB", d))
             except:
                 pass
 
