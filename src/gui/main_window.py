@@ -23,6 +23,8 @@ from .utils import ProgressDialog
 
 class FRPFreedomApp:
     """Main application class for FRP Freedom"""
+
+    DEVICE_SCAN_INTERVAL_SECONDS = 15
     
     def __init__(self, config=None):
         self.root = tk.Tk()
@@ -588,29 +590,38 @@ Proceed only if you understand the risks and legal implications.
         self.next_button.config(state='normal')
     
     def start_device_scanning(self):
-        """Start device scanning in background"""
+        """Poll for device changes while the device-selection screen is visible."""
+        self._device_scan_stop = threading.Event()
+
         def scan_devices():
-            try:
-                # Continuously scan for devices
-                import time
-                while True:
-                    devices = self.device_manager.scan_devices()
-                    # Update device selection frame if it exists and is valid
-                    if hasattr(self, 'device_frame') and self.device_frame:
-                        try:
-                            # Check if widget still exists before scheduling update
-                            if self.device_frame.winfo_exists():
-                                self.device_frame.after(0, self.device_frame.update_device_list, devices)
-                        except (tk.TclError, AttributeError):
-                            # Widget was destroyed, skip this update
-                            pass
-                    time.sleep(5)  # Scan every 5 seconds
-            except Exception as e:
-                self.logger.error(f"Device scanning error: {e}")
-        
-        # Start scanning in background thread
+            while not self._device_scan_stop.wait(self.DEVICE_SCAN_INTERVAL_SECONDS):
+                device_frame = getattr(self, 'device_frame', None)
+                if self.current_step != 1 or not device_frame:
+                    continue
+
+                try:
+                    if not device_frame.winfo_exists():
+                        continue
+
+                    devices = self.device_manager.scan_devices(refresh_details=False)
+                    self.root.after(0, self._complete_device_scan, device_frame, devices)
+                except (tk.TclError, AttributeError):
+                    continue
+                except Exception as e:
+                    self.logger.error(f"Device scanning error: {e}")
+
         scan_thread = threading.Thread(target=scan_devices, daemon=True)
         scan_thread.start()
+
+    def _complete_device_scan(self, device_frame, devices):
+        """Apply a background poll only if its screen is still active."""
+        if self.current_step != 1 or getattr(self, 'device_frame', None) is not device_frame:
+            return
+        try:
+            if device_frame.winfo_exists():
+                device_frame.update_device_list(devices)
+        except (tk.TclError, AttributeError):
+            pass
     
     def refresh_devices(self):
         """Refresh device list"""
@@ -748,6 +759,10 @@ Use responsibly and in compliance with local laws.
     def on_closing(self):
         """Handle application closing"""
         try:
+            scan_stop = getattr(self, '_device_scan_stop', None)
+            if scan_stop:
+                scan_stop.set()
+
             # Log application shutdown
             self.audit_logger.log_event('application_shutdown', {})
             
