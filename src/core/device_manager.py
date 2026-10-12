@@ -153,6 +153,7 @@ class DeviceManager:
             return self._scan_devices(refresh_details)
 
     def _scan_devices(self, refresh_details: bool) -> List[DeviceInfo]:
+        """Discover devices and refresh transient modem-port associations."""
         self.logger.info("Scanning for connected devices...")
         devices = []
         
@@ -170,6 +171,8 @@ class DeviceManager:
         
         # Update connected_devices BEFORE modem scan so matching works correctly
         self.connected_devices = devices
+        for device in devices:
+            device.modem_port = ""
         
         # Scan Samsung modems (merged into existing devices if matched)
         modem_devices = self.scan_samsung_modems()

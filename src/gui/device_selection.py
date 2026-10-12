@@ -309,6 +309,14 @@ Device Connection Guide
                 if item_id:
                     if self.device_tree.item(item_id, 'values') != values:
                         self.device_tree.item(item_id, values=values)
+                    selected_device = self.selected_device
+                    if (
+                        selected_device
+                        and (selected_device.connection_type, selected_device.serial) == key
+                        and selected_device is not device
+                    ):
+                        self.selected_device = device
+                        self.update_device_details(device)
                     self.device_map[item_id] = device
                 else:
                     item_id = self.device_tree.insert('', 'end', values=values)

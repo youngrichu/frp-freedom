@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+import threading
 from unittest.mock import Mock
 
 from src.core.device_manager import DeviceInfo, DeviceManager
@@ -45,6 +46,23 @@ def test_adb_poll_reuses_details_for_an_unchanged_device(monkeypatch):
     manager._get_adb_device_info.assert_not_called()
 
 
+def test_scan_clears_stale_modem_port_before_rebuilding_associations():
+    device = make_device(modem_port="COM7")
+    manager = DeviceManager.__new__(DeviceManager)
+    manager.logger = logging.getLogger(__name__)
+    manager._scan_lock = threading.Lock()
+    manager.connected_devices = [device]
+    manager._scan_adb_devices = Mock(return_value=[device])
+    manager._scan_fastboot_devices = Mock(return_value=[])
+    manager._scan_download_mode_devices = Mock(return_value=[])
+    manager.scan_samsung_modems = Mock(return_value=[])
+
+    manager.scan_devices(refresh_details=False)
+
+    assert device.modem_port == ""
+    manager.scan_samsung_modems.assert_called_once_with()
+
+
 def test_device_list_poll_does_not_rebuild_unchanged_tree_rows():
     frame = DeviceSelectionFrame.__new__(DeviceSelectionFrame)
     frame.winfo_exists = Mock(return_value=True)
@@ -61,12 +79,18 @@ def test_device_list_poll_does_not_rebuild_unchanged_tree_rows():
     frame.status_label = Mock()
     frame.status_label.winfo_exists.return_value = True
     frame.device_items_by_key = {("adb", "serial-001"): "row-1"}
-    frame.device_map = {"row-1": make_device()}
+    old_device = make_device(model="Old Model")
+    frame.device_map = {"row-1": old_device}
+    frame.selected_device = old_device
+    frame.device_tree.selection.return_value = ("row-1",)
+    frame.update_device_details = Mock()
 
     refreshed_device = make_device()
     DeviceSelectionFrame.update_device_list(frame, [refreshed_device])
 
     frame.device_tree.insert.assert_not_called()
     frame.device_tree.delete.assert_not_called()
-    frame.device_tree.item.assert_called_once()
+    assert frame.device_tree.item.call_count == 1
     assert frame.device_map["row-1"] is refreshed_device
+    assert frame.selected_device is refreshed_device
+    frame.update_device_details.assert_called_once_with(refreshed_device)
