@@ -88,6 +88,34 @@ Use **Tools → Protocol Diagnostics** to inspect availability and recognized
 Qualcomm EDL or MediaTek BootROM USB modes. This diagnostic layer does not
 flash, erase, or modify device partitions.
 
+### Hardware Bypass Operations (EDL / MTK / Odin)
+
+On top of diagnostics, the hardware bypass methods drive real protocol
+operations through these open-source tools:
+
+- **Qualcomm EDL FRP erase** (`qualcomm_edl_2025`): detects the 9008 EDL
+  interface, erases the FRP partition via the `edl` client, then verifies
+  against the GPT. Set `tools.edl.loader` if your device needs a specific
+  Firehose programmer.
+- **MediaTek FRP erase** (`mediatek_cve_2025`): detects the preloader/BootROM
+  interface and erases the FRP partition via `mtkclient` (partition operations
+  resolve only the `mtk`/`mtkclient` CLI, not SP Flash Tool).
+- **Samsung download-mode flash** (`samsung_odin_exploit`): flashes a
+  device-specific image you supply via `tools.heimdall.frp_image` to
+  `tools.heimdall.frp_partition` (default `BOOT`). Without a configured image
+  this method fails explicitly rather than simulating a flash.
+
+The erased partition defaults to `frp` and can be overridden with
+`bypass.frp_partition` for device families that differ. Every operation
+reports honest failures: a missing tool, missing device, or failed command
+fails the method instead of faking success. The Mali GPU Pixel method is not
+implemented in the open-source build and fails explicitly; prefer EDL or
+fastboot-based methods.
+
+Devices detected in EDL, MediaTek preloader, or Samsung download mode appear
+in the device list with connection types `edl`, `mtk_download`, and
+`download` respectively, and are matched with the hardware bypass methods.
+
 ## 🚀 Quick Start
 
 📖 **For detailed setup instructions, see [SETUP_GUIDE.md](SETUP_GUIDE.md)**

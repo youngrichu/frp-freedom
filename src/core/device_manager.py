@@ -70,6 +70,7 @@ class DeviceManager:
         self.fastboot_path = self._find_fastboot_binary()
         self.protocol_tools = ProtocolToolRegistry(config)
         self.connected_devices: List[DeviceInfo] = []
+        self._protocol_operations = None
 
     def get_protocol_diagnostics(self, probe_versions: bool = False) -> Dict:
         """Report low-level tool availability and recognized USB modes.
@@ -148,7 +149,7 @@ class DeviceManager:
         fastboot_devices = self._scan_fastboot_devices()
         devices.extend(fastboot_devices)
         
-        # Scan download mode devices (placeholder for future implementation)
+        # Scan download mode devices (Samsung Odin, Qualcomm EDL, MTK preloader)
         download_devices = self._scan_download_mode_devices()
         devices.extend(download_devices)
         
@@ -357,12 +358,53 @@ class DeviceManager:
             
         return new_devices
 
+    def _get_protocol_operations(self):
+        """Lazily constructed operational protocol facade."""
+        if self._protocol_operations is None:
+            from .protocol_operations import DeviceProtocolOperations
+            self._protocol_operations = DeviceProtocolOperations(self.config)
+        return self._protocol_operations
+
     def _scan_download_mode_devices(self) -> List[DeviceInfo]:
-        """Scan for devices in download mode (placeholder)"""
-        # This would implement detection for Samsung Download Mode,
-        # MediaTek Download Mode, Qualcomm EDL mode, etc.
-        # For now, return empty list
-        return []
+        """Scan for devices in download/EDL/preloader modes"""
+        devices = []
+        try:
+            detections = self._get_protocol_operations().scan_special_modes()
+        except Exception as e:
+            self.logger.error(f"Special-mode device scan failed: {e}")
+            return []
+
+        connection_types = {
+            'samsung_download': 'download',
+            'edl': 'edl',
+            'mtk_preloader': 'mtk_download',
+        }
+        chipset_by_mode = {
+            'edl': 'qualcomm',
+            'mtk_preloader': 'mediatek',
+        }
+
+        for det in detections:
+            serial = det.port or det.mode
+            if any(d.serial == serial for d in devices):
+                continue
+            is_samsung = det.mode == 'samsung_download'
+            devices.append(DeviceInfo(
+                serial=serial,
+                model=det.detail,
+                manufacturer='Samsung' if is_samsung else 'Unknown',
+                android_version='Unknown',
+                sdk_version='Unknown',
+                bootloader_version='Unknown',
+                frp_status='Unknown',
+                connection_type=connection_types.get(det.mode, 'download'),
+                chipset=chipset_by_mode.get(det.mode, 'unknown'),
+                brand='Samsung' if is_samsung else 'Unknown',
+                modem_port=det.port,
+            ))
+            self.logger.info(f"Detected {det.detail} on {serial or 'USB'}")
+
+        return devices
     
     def _get_adb_device_info(self, serial: str, metadata: Dict[str, str] = None) -> Optional[DeviceInfo]:
         """Get detailed information for an ADB device"""

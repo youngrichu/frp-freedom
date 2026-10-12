@@ -61,9 +61,12 @@ class Config:
                 "timeout_seconds": 30
             },
             "tools": {
-                "heimdall": {"path": ""},
-                "edl": {"path": ""},
+                "heimdall": {"path": "", "frp_image": "", "frp_partition": "BOOT"},
+                "edl": {"path": "", "loader": ""},
                 "mediatek": {"path": ""}
+            },
+            "bypass": {
+                "frp_partition": "frp"
             },
             "bypass_methods": {
                 "adb_exploits": True,

@@ -197,32 +197,32 @@ class BypassManager:
                 ),
                 BypassMethod(
                     name="qualcomm_edl_2025",
-                    description="Qualcomm EDL mode with 2025 GPU exploits (CVE-2025-48530)",
+                    description="Erase FRP partition via Qualcomm EDL (9008) mode using the open-source edl client",
                     category="hardware",
                     risk_level="high",
                     success_rate=0.92,
                     estimated_time=35,
-                    requirements=["EDL mode", "Qualcomm chipset", "GPU vulnerability"],
+                    requirements=["EDL mode", "Qualcomm chipset", "edl client", "Firehose loader"],
                     supported_devices=["Samsung Galaxy S24", "Xiaomi", "OnePlus", "Google"],
                     android_versions=["13.0", "14.0", "15.0"]
                 ),
                 BypassMethod(
                     name="mediatek_cve_2025",
-                    description="MediaTek out-of-bounds write exploit (CVE-2025-20698)",
+                    description="Erase FRP partition via MediaTek preloader/bootrom mode using mtkclient",
                     category="hardware",
                     risk_level="high",
                     success_rate=0.89,
                     estimated_time=40,
-                    requirements=["MediaTek chipset", "SP Flash Tool", "Custom firmware"],
+                    requirements=["MediaTek chipset", "mtkclient", "Preloader/BootROM access"],
                     supported_devices=["Xiaomi", "Realme", "Oppo"],
                     android_versions=["13.0", "14.0", "15.0"]
                 ),
                 BypassMethod(
                     name="mali_gpu_pixel_exploit",
-                    description="Mali GPU vulnerability for Pixel devices (2024 method)",
+                    description="Mali GPU vulnerability for Pixel devices (not implemented in the open-source build)",
                     category="hardware",
                     risk_level="high",
-                    success_rate=0.87,
+                    success_rate=0.0,
                     estimated_time=25,
                     requirements=["Google Pixel", "Mali GPU", "Kernel exploit"],
                     supported_devices=["Google Pixel 7", "Google Pixel 8", "Google Pixel 8 Pro"],
@@ -302,7 +302,7 @@ class BypassManager:
         if device.connection_type not in ['adb_unauthorized', 'adb_restricted']:
             if method.category == 'adb' and device.connection_type not in ['adb']:
                 return False
-            elif method.category == 'hardware' and device.connection_type not in ['fastboot', 'download']:
+            elif method.category == 'hardware' and device.connection_type not in ['fastboot', 'download', 'edl', 'mtk_download']:
                 return False
         
         return True

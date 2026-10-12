@@ -16,14 +16,23 @@ device:
   connection_timeout: 30
   command_timeout: 60
 
-# Optional protocol tool overrides. Leave blank to discover bundled tools or PATH.
+# Optional protocol tool overrides. Leave path blank to discover bundled tools or PATH.
 tools:
   heimdall:
     path: ""
+    # Image flashed to frp_partition for the Odin/download-mode method (required for it).
+    frp_image: ""
+    frp_partition: "BOOT"
   edl:
     path: ""
+    # Optional Firehose programmer (.elf/.mbn) for the edl client.
+    loader: ""
   mediatek:
     path: ""
+
+bypass:
+  # Name of the FRP partition erased by the EDL/MTK methods.
+  frp_partition: "frp"
 
 ui:
   theme: "default"
