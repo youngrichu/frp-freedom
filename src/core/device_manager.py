@@ -11,6 +11,7 @@ import logging
 import sys
 import os
 import shutil
+import threading
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import json
@@ -88,6 +89,7 @@ class DeviceManager:
         self.adb_path = self._find_adb_binary()
         self.fastboot_path = self._find_fastboot_binary()
         self.connected_devices: List[DeviceInfo] = []
+        self._scan_lock = threading.Lock()
         
     def _find_adb_binary(self) -> Optional[Path]:
         """Find ADB binary in system PATH or bundled tools"""
@@ -145,17 +147,21 @@ class DeviceManager:
         self.logger.warning("Fastboot binary not found. Some features may not work.")
         return None
     
-    def scan_devices(self) -> List[DeviceInfo]:
+    def scan_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for connected Android devices"""
+        with self._scan_lock:
+            return self._scan_devices(refresh_details)
+
+    def _scan_devices(self, refresh_details: bool) -> List[DeviceInfo]:
         self.logger.info("Scanning for connected devices...")
         devices = []
         
         # Scan ADB devices
-        adb_devices = self._scan_adb_devices()
+        adb_devices = self._scan_adb_devices(refresh_details)
         devices.extend(adb_devices)
         
         # Scan fastboot devices
-        fastboot_devices = self._scan_fastboot_devices()
+        fastboot_devices = self._scan_fastboot_devices(refresh_details)
         devices.extend(fastboot_devices)
         
         # Scan Samsung Download/Odin mode devices via Heimdall
@@ -175,13 +181,14 @@ class DeviceManager:
         
         return devices
     
-    def _scan_adb_devices(self) -> List[DeviceInfo]:
+    def _scan_adb_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for ADB-connected devices"""
         if not self.adb_path:
             self.logger.debug("No ADB path found")
             return []
         
         devices = []
+        cached_devices = {device.serial: device for device in self.connected_devices}
         try:
             # Get device list
             result = subprocess.run(
@@ -218,8 +225,16 @@ class DeviceManager:
                         self.logger.debug(f"Found device: serial={serial}, status={status}, metadata={metadata}")
                         
                         if status in ['device', 'recovery']:
-                            self.logger.debug(f"Getting device info for authorized device: {serial}")
-                            device_info = self._get_adb_device_info(serial, metadata)
+                            cached_device = cached_devices.get(serial)
+                            if (
+                                not refresh_details
+                                and cached_device
+                                and cached_device.connection_type == 'adb'
+                            ):
+                                device_info = cached_device
+                            else:
+                                self.logger.debug(f"Getting device info for authorized device: {serial}")
+                                device_info = self._get_adb_device_info(serial, metadata)
                             if device_info:
                                 self.logger.debug(f"Successfully got device info for {serial}")
                                 devices.append(device_info)
@@ -245,13 +260,14 @@ class DeviceManager:
         self.logger.debug(f"Returning {len(devices)} devices")
         return devices
     
-    def _scan_fastboot_devices(self) -> List[DeviceInfo]:
+    def _scan_fastboot_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for fastboot-connected devices"""
         if not self.fastboot_path:
             self.logger.debug("Fastboot binary not found")
             return []
         
         devices = []
+        cached_devices = {device.serial: device for device in self.connected_devices}
         try:
             result = subprocess.run(
                 [str(self.fastboot_path), "devices"],
@@ -283,7 +299,15 @@ class DeviceManager:
                     self.logger.debug(f"Found fastboot device: serial={serial}, status={status}")
                     
                     if status == 'fastboot':  # Device is in fastboot mode
-                        device_info = self._get_fastboot_device_info(serial)
+                        cached_device = cached_devices.get(serial)
+                        if (
+                            not refresh_details
+                            and cached_device
+                            and cached_device.connection_type == 'fastboot'
+                        ):
+                            device_info = cached_device
+                        else:
+                            device_info = self._get_fastboot_device_info(serial)
                         if device_info:
                             devices.append(device_info)
                             self.logger.debug(f"Added fastboot device: {serial}")
