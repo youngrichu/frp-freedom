@@ -163,8 +163,28 @@ class DeviceManager:
         # Final update with any new modem-only devices
         self.connected_devices = devices
         self.logger.info(f"Found {len(devices)} connected device(s)")
-        
+
         return devices
+
+    def wait_for_connection(self, connection_types, timeout_seconds: float,
+                            poll_interval: float = 2.0) -> Optional[DeviceInfo]:
+        """Rescan until a device with one of the connection types appears.
+
+        Returns the first matching DeviceInfo, or None when the timeout
+        elapses. A timeout of 0 performs a single scan with no waiting.
+        """
+        deadline = time.monotonic() + max(timeout_seconds, 0)
+        while True:
+            try:
+                for device in self.scan_devices():
+                    if device.connection_type in connection_types:
+                        return device
+            except Exception as e:
+                self.logger.debug(f"Scan while waiting for connection failed: {e}")
+
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(poll_interval)
     
     def _scan_adb_devices(self) -> List[DeviceInfo]:
         """Scan for ADB-connected devices"""

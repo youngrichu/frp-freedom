@@ -23,6 +23,9 @@ tools:
     # Image flashed to frp_partition for the Odin/download-mode method (required for it).
     frp_image: ""
     frp_partition: "BOOT"
+    # Combination (factory) firmware .tar/.tar.md5 for your exact Samsung model;
+    # required by the samsung_combination_flash method.
+    combination_image: ""
   edl:
     path: ""
     # Optional Firehose programmer (.elf/.mbn) for the edl client.
@@ -31,8 +34,12 @@ tools:
     path: ""
 
 bypass:
-  # Name of the FRP partition erased by the EDL/MTK methods.
+  # Name of the FRP partition erased by the EDL/MTK/fastboot methods.
   frp_partition: "frp"
+  # Seconds to wait for an ADB session after the Samsung test-mode enable
+  # sequence or after combination firmware boots.
+  test_mode_timeout: 180
+  combination_adb_timeout: 180
 
 ui:
   theme: "default"

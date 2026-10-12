@@ -140,6 +140,17 @@ class BypassManager:
                 requirements=["Samsung device", "Setup wizard", "Precise timing"],
                 supported_devices=["Samsung Galaxy A04", "Samsung Galaxy S24", "Samsung"],
                 android_versions=["14.0", "15.0"]
+            ),
+            BypassMethod(
+                name="samsung_test_mode_adb",
+                description="Enable ADB from Samsung test mode (*#0*#) via modem AT commands, then remove FRP",
+                category="interface",
+                risk_level="low",
+                success_rate=0.85,
+                estimated_time=12,
+                requirements=["Samsung device", "Samsung USB modem port", "Emergency dialer access"],
+                supported_devices=["Samsung"],
+                android_versions=["8.0", "9.0", "10.0", "11.0", "12.0", "13.0", "14.0", "15.0"]
             )
         ])
         
@@ -216,6 +227,28 @@ class BypassManager:
                     requirements=["MediaTek chipset", "mtkclient", "Preloader/BootROM access"],
                     supported_devices=["Xiaomi", "Realme", "Oppo"],
                     android_versions=["13.0", "14.0", "15.0"]
+                ),
+                BypassMethod(
+                    name="fastboot_frp_erase",
+                    description="Erase FRP partition from fastboot on unlocked-bootloader devices",
+                    category="hardware",
+                    risk_level="medium",
+                    success_rate=0.90,
+                    estimated_time=10,
+                    requirements=["Fastboot mode", "Unlocked bootloader"],
+                    supported_devices=["Google", "Xiaomi", "OnePlus", "Motorola", "Nothing"],
+                    android_versions=["8.0", "9.0", "10.0", "11.0", "12.0", "13.0", "14.0", "15.0"]
+                ),
+                BypassMethod(
+                    name="samsung_combination_flash",
+                    description="Flash combination (factory) firmware via Heimdall, then remove FRP over ADB",
+                    category="hardware",
+                    risk_level="high",
+                    success_rate=0.88,
+                    estimated_time=30,
+                    requirements=["Download mode", "Combination firmware", "Heimdall"],
+                    supported_devices=["Samsung"],
+                    android_versions=["8.0", "9.0", "10.0", "11.0", "12.0", "13.0", "14.0", "15.0"]
                 ),
                 BypassMethod(
                     name="mali_gpu_pixel_exploit",

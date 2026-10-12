@@ -112,6 +112,23 @@ fails the method instead of faking success. The Mali GPU Pixel method is not
 implemented in the open-source build and fails explicitly; prefer EDL or
 fastboot-based methods.
 
+### Additional Recovery Methods
+
+- **Fastboot FRP erase** (`fastboot_frp_erase`): for devices already in
+  fastboot mode with an unlocked bootloader. Tries `fastboot erase frp`,
+  `fastboot oem frp-erase`, then flashing a zeroed image over the FRP
+  partition, reporting which variant worked.
+- **Samsung combination firmware flash** (`samsung_combination_flash`):
+  flashes a user-supplied combination (factory) firmware archive
+  (`tools.heimdall.combination_image`) member-by-member via Heimdall, waits
+  for the factory binary's ADB session, and runs the FRP removal sequence.
+  Reflashing stock firmware afterwards is required. lz4-compressed images
+  must be decompressed first (Heimdall cannot flash them).
+- **Samsung test-mode ADB** (`samsung_test_mode_adb`): a one-shot version of
+  the modem AT-command flow — enter `*#0*#` in the emergency dialer, the app
+  drives the ADB-enable sequence over the Samsung modem port, waits for the
+  ADB session (`bypass.test_mode_timeout`), and removes FRP in one run.
+
 Devices detected in EDL, MediaTek preloader, or Samsung download mode appear
 in the device list with connection types `edl`, `mtk_download`, and
 `download` respectively, and are matched with the hardware bypass methods.
