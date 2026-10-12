@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Dict, List, Optional, Callable, Any
 
-from ..core.device_manager import DeviceInfo, DeviceManager
+from ..core.device_manager import DeviceInfo, DeviceManager, describe_connection_capabilities
 from .types import BypassResult, BypassMethod
 from .adb_exploits import ADBExploitManager
 from .interface_exploits import InterfaceExploitManager
@@ -18,6 +18,15 @@ from ..ai.ai_engine import AIEngine, DeviceProfile
     
 class BypassManager:
     """Main bypass coordination class"""
+
+    # These entries currently terminate fail-closed in HardwareExploitManager.
+    # Keep them visible as declared methods, but never advertise them as executable.
+    UNIMPLEMENTED_METHODS = {
+        "download_mode_flash",
+        "qualcomm_edl_2025",
+        "mediatek_cve_2025",
+        "mali_gpu_pixel_exploit",
+    }
     
     def __init__(self, config, device_manager: DeviceManager):
         self.config = config
@@ -233,86 +242,155 @@ class BypassManager:
         return methods
     
     def get_recommended_methods(self, device: DeviceInfo) -> List[BypassMethod]:
-        """Get AI-enhanced recommended bypass methods for a specific device"""
-        # Get AI analysis of the device
-        device_profile = self.ai_engine.analyze_device(device)
-        
-        # Get compatible methods using traditional logic
-        compatible_methods = []
-        for method in self.available_methods:
-            if self._is_method_compatible(method, device):
-                compatible_methods.append(method)
-        
-        # Enhance with AI recommendations
-        ai_recommended_names = device_profile.recommended_methods
-        ai_methods = [m for m in compatible_methods if m.name in ai_recommended_names]
-        other_methods = [m for m in compatible_methods if m.name not in ai_recommended_names]
-        
-        # Sort AI methods by success probability
-        ai_methods.sort(key=lambda m: device_profile.success_probability.get(m.name, 0.5), reverse=True)
-        
-        # Sort other methods by traditional criteria
-        other_methods.sort(key=lambda m: (m.success_rate, -self._risk_score(m.risk_level)), reverse=True)
-        
-        # Combine: AI recommendations first, then others
-        recommended = ai_methods + other_methods
-        
-        self.logger.info(f"AI recommended {len(ai_methods)} methods for {device.brand} {device.model}")
-        
-        return recommended
-    
-    def _is_method_compatible(self, method: BypassMethod, device: DeviceInfo) -> bool:
-        """Check if a method is compatible with the device"""
-        # Handle unauthorized devices (FRP bypass scenarios)
-        if device.connection_type == 'adb_unauthorized':
-            # For unauthorized devices, only allow interface-based methods
-            # Skip ADB methods since device is not authorized
-            if method.category == 'adb':
-                return False
-            # Prioritize interface methods for FRP bypass
-            if method.category not in ['interface', 'system']:
-                return False
-        
-        # Handle restricted devices (FRP lock, Test Mode, etc.)
-        if device.connection_type == 'adb_restricted':
-            # Device is connected but shell access is blocked
-            # Only allow interface methods that don't require shell access
-            if method.category == 'adb':
-                return False  # ADB methods need shell access
-            # Allow interface and some system methods
-            if method.category not in ['interface', 'system']:
-                return False
-        
-        # Check manufacturer (skip for unknown devices)
-        if device.manufacturer != "Unknown" and device.manufacturer.lower() not in [d.lower() for d in method.supported_devices]:
-            return False
-        
-        # Check Android version (skip for unknown versions OR restricted devices)
-        # For restricted devices, we can't determine Android version, so allow all methods
-        if device.android_version != "Unknown" and device.connection_type not in ['adb_restricted', 'adb_unauthorized']:
-            device_version = device.android_version
-            if device_version not in method.android_versions:
-                # Try to match major version
-                device_major = device_version.split('.')[0] if '.' in device_version else device_version
-                method_majors = [v.split('.')[0] for v in method.android_versions]
-                if device_major not in method_majors:
-                    return False
-        
-        # Download/Odin mode can only use verified hardware methods.
-        if device.connection_type == 'download':
-            return (
-                method.category == 'hardware'
-                and method.name != 'download_mode_flash'
-            )
+        """Return executable methods, using AI only when device metadata is sufficient."""
+        compatible_methods = [
+            method
+            for method in self.available_methods
+            if self.evaluate_method_capability(device, method)["available"]
+        ]
 
-        # Check connection type requirements for normal devices
-        if device.connection_type not in ['adb_unauthorized', 'adb_restricted']:
-            if method.category == 'adb' and device.connection_type not in ['adb']:
-                return False
-            elif method.category == 'hardware' and device.connection_type not in ['fastboot', 'download']:
-                return False
-        
-        return True
+        capabilities = describe_connection_capabilities(
+            device,
+            hardware_methods_enabled=bool(
+                self.config.get("bypass_methods.hardware_methods", False)
+            ),
+        )
+
+        if not capabilities["ai_metadata_sufficient"]:
+            compatible_methods.sort(
+                key=lambda m: (m.success_rate, -self._risk_score(m.risk_level)),
+                reverse=True,
+            )
+            self.logger.info(
+                "AI scoring skipped for %s %s in connection state %s",
+                device.brand,
+                device.model,
+                device.connection_type,
+            )
+            return compatible_methods
+
+        device_profile = self.ai_engine.analyze_device(device)
+        ai_recommended_names = device_profile.recommended_methods
+        ai_methods = [
+            method
+            for method in compatible_methods
+            if method.name in ai_recommended_names
+        ]
+        other_methods = [
+            method
+            for method in compatible_methods
+            if method.name not in ai_recommended_names
+        ]
+
+        ai_methods.sort(
+            key=lambda m: device_profile.success_probability.get(m.name, 0.5),
+            reverse=True,
+        )
+        other_methods.sort(
+            key=lambda m: (m.success_rate, -self._risk_score(m.risk_level)),
+            reverse=True,
+        )
+
+        self.logger.info(
+            "AI recommended %d methods for %s %s",
+            len(ai_methods),
+            device.brand,
+            device.model,
+        )
+        return ai_methods + other_methods
+
+    def evaluate_method_capability(
+        self,
+        device: DeviceInfo,
+        method: BypassMethod,
+    ) -> Dict[str, Any]:
+        """Explain whether a method is currently executable without changing device state."""
+        config = getattr(self, "config", None)
+        hardware_methods_enabled = (
+            True
+            if config is None
+            else bool(config.get("bypass_methods.hardware_methods", False))
+        )
+        connection_type = (device.connection_type or "unknown").lower()
+
+        if method.category == "hardware" and not hardware_methods_enabled:
+            return {
+                "available": False,
+                "status": "disabled_by_config",
+                "reason": "Hardware methods are disabled by configuration.",
+            }
+
+        if method.name in self.UNIMPLEMENTED_METHODS:
+            return {
+                "available": False,
+                "status": "not_implemented",
+                "reason": "Method is declared but has no verified executable implementation.",
+            }
+
+        if method.category == "adb" and connection_type != "adb":
+            return {
+                "available": False,
+                "status": "requires_adb",
+                "reason": "Method requires an authorized ADB connection.",
+            }
+
+        if connection_type in {"adb_unauthorized", "adb_restricted"}:
+            return {
+                "available": False,
+                "status": "unsupported_connection_state",
+                "reason": f"Method is unavailable in {connection_type} state.",
+            }
+
+        if connection_type == "download" and method.category != "hardware":
+            return {
+                "available": False,
+                "status": "unsupported_connection_state",
+                "reason": "Download Mode only permits verified hardware methods.",
+            }
+
+        if (
+            method.category == "hardware"
+            and connection_type not in {"fastboot", "download"}
+        ):
+            return {
+                "available": False,
+                "status": "requires_fastboot_or_download",
+                "reason": "Hardware method requires Fastboot or Download Mode.",
+            }
+
+        manufacturer = (device.manufacturer or "unknown").lower()
+        supported_devices = [entry.lower() for entry in method.supported_devices]
+        if manufacturer != "unknown" and manufacturer not in supported_devices:
+            return {
+                "available": False,
+                "status": "unsupported_device",
+                "reason": "Method does not declare support for this manufacturer.",
+            }
+
+        android_version = (device.android_version or "unknown")
+        if (
+            android_version.lower() != "unknown"
+            and connection_type not in {"adb_restricted", "adb_unauthorized"}
+        ):
+            if android_version not in method.android_versions:
+                device_major = android_version.split(".")[0]
+                method_majors = [version.split(".")[0] for version in method.android_versions]
+                if device_major not in method_majors:
+                    return {
+                        "available": False,
+                        "status": "unsupported_android_version",
+                        "reason": "Method does not declare support for this Android version.",
+                    }
+
+        return {
+            "available": True,
+            "status": "available",
+            "reason": "Method is compatible with the current diagnostic facts.",
+        }
+
+    def _is_method_compatible(self, method: BypassMethod, device: DeviceInfo) -> bool:
+        """Backward-compatible boolean wrapper around capability evaluation."""
+        return self.evaluate_method_capability(device, method)["available"]
     
     def _risk_score(self, risk_level: str) -> int:
         """Convert risk level to numeric score"""
@@ -510,25 +588,69 @@ class BypassManager:
         return max(base_time, 1)  # Minimum 1 minute
     
     def get_ai_device_analysis(self, device: DeviceInfo) -> Dict[str, Any]:
-        """Get comprehensive AI analysis of the device"""
-        if device.connection_type == "download":
-            hardware_methods_enabled = bool(self.config.get("bypass_methods.hardware_methods", False))
-            compatible_methods = [
-                method
-                for method in self.available_methods
-                if self._is_method_compatible(method, device)
-            ]
+        """Get AI analysis only when transport and metadata support meaningful scoring."""
+        hardware_methods_enabled = bool(
+            self.config.get("bypass_methods.hardware_methods", False)
+        )
+        capabilities = describe_connection_capabilities(
+            device,
+            hardware_methods_enabled=hardware_methods_enabled,
+        )
+
+        if not capabilities["ai_metadata_sufficient"]:
+            compatible_methods = self.get_recommended_methods(device)
             method_names = [method.name for method in compatible_methods]
-            if method_names:
-                strategy = "Download Mode detected. ADB is unavailable in this connection state. Compatible hardware methods are enabled; review implementation status before execution."
+            connection_type = capabilities["connection_type"]
+
+            if connection_type == "download":
+                assessment = (
+                    "Download Mode diagnostic state - vulnerability scoring is "
+                    "unavailable with the current device metadata."
+                )
+                if method_names:
+                    strategy = (
+                        "Download Mode detected. ADB is unavailable in this "
+                        "connection state. Compatible implemented methods are listed."
+                    )
+                else:
+                    strategy = (
+                        "Download Mode detected. ADB is unavailable in this connection "
+                        "state. No implemented compatible methods are currently enabled."
+                    )
+            elif connection_type == "adb_unauthorized":
+                assessment = (
+                    "ADB unauthorized diagnostic state - vulnerability scoring is "
+                    "unavailable until trusted device metadata can be read."
+                )
+                strategy = (
+                    "ADB is connected but unauthorized. ADB methods are unavailable; "
+                    "only capabilities compatible with the current connection state are listed."
+                )
+            elif connection_type == "adb_restricted":
+                assessment = (
+                    "ADB restricted diagnostic state - vulnerability scoring is "
+                    "unavailable with the current device metadata."
+                )
+                strategy = (
+                    "ADB shell access is restricted. Only capabilities compatible with "
+                    "the current connection state are listed."
+                )
             else:
-                strategy = "Download Mode detected. ADB is unavailable in this connection state. No implemented compatible methods are currently enabled."
+                assessment = (
+                    f"{connection_type or 'Unknown'} diagnostic state - vulnerability "
+                    "scoring is unavailable with the current device metadata."
+                )
+                strategy = (
+                    "Insufficient trusted metadata for AI scoring. Use transport and "
+                    "capability diagnostics only."
+                )
+
             return {
                 "device_info": {
                     "brand": device.brand,
                     "model": device.model,
                     "android_version": device.android_version,
-                    "security_patch": device.security_patch
+                    "security_patch": device.security_patch,
                 },
                 "ai_analysis": {
                     "analysis_available": False,
@@ -537,30 +659,51 @@ class BypassManager:
                     "vulnerability_score": None,
                     "recommended_methods": method_names,
                     "success_probabilities": {},
-                    "security_assessment": "Download Mode diagnostic state - vulnerability scoring is unavailable with the current device metadata.",
+                    "security_assessment": assessment,
                     "bypass_strategy": strategy,
-                    "hardware_methods_enabled": hardware_methods_enabled
-                }
+                    "hardware_methods_enabled": hardware_methods_enabled,
+                    "connection_capabilities": capabilities,
+                },
             }
 
         device_profile = self.ai_engine.analyze_device(device)
-        
+        compatible_names = {
+            method.name
+            for method in self.available_methods
+            if self.evaluate_method_capability(device, method)["available"]
+        }
+        recommended_methods = [
+            method_name
+            for method_name in device_profile.recommended_methods
+            if method_name in compatible_names
+        ]
+        success_probabilities = {
+            method_name: device_profile.success_probability[method_name]
+            for method_name in recommended_methods
+            if method_name in device_profile.success_probability
+        }
+
         return {
-            'device_info': {
-                'brand': device.brand,
-                'model': device.model,
-                'android_version': device.android_version,
-                'security_patch': device.security_patch
+            "device_info": {
+                "brand": device.brand,
+                "model": device.model,
+                "android_version": device.android_version,
+                "security_patch": device.security_patch,
             },
-            'ai_analysis': {
-                'complexity_score': device_profile.complexity_score,
-                'frp_complexity': device_profile.frp_complexity,
-                'vulnerability_score': device_profile.vulnerability_score,
-                'recommended_methods': device_profile.recommended_methods,
-                'success_probabilities': device_profile.success_probability,
-                'security_assessment': self._get_security_assessment_text(device_profile.vulnerability_score),
-                'bypass_strategy': self._get_bypass_strategy(device_profile)
-            }
+            "ai_analysis": {
+                "analysis_available": True,
+                "complexity_score": device_profile.complexity_score,
+                "frp_complexity": device_profile.frp_complexity,
+                "vulnerability_score": device_profile.vulnerability_score,
+                "recommended_methods": recommended_methods,
+                "success_probabilities": success_probabilities,
+                "security_assessment": self._get_security_assessment_text(
+                    device_profile.vulnerability_score
+                ),
+                "bypass_strategy": self._get_bypass_strategy(device_profile),
+                "hardware_methods_enabled": hardware_methods_enabled,
+                "connection_capabilities": capabilities,
+            },
         }
     
     def _get_security_assessment_text(self, vulnerability_score: float) -> str:

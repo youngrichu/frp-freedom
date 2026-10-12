@@ -10,7 +10,7 @@ import threading
 import logging
 from typing import List, Callable, Optional
 
-from ..core.device_manager import DeviceInfo
+from ..core.device_manager import DeviceInfo, describe_connection_capabilities
 from ..bypass.bypass_manager import BypassManager
 from ..bypass.types import BypassMethod
 from ..ai import AIEngine
@@ -207,15 +207,28 @@ class MethodSelectionFrame(ttk.Frame):
     def format_method_list_status(device, available_methods, hardware_methods_enabled):
         if available_methods:
             return ""
-        if device.connection_type == "download":
-            lines = ["No compatible methods are currently available."]
-            if hardware_methods_enabled:
-                lines.append("Hardware methods are enabled, but no compatible implemented method is available.")
+
+        capabilities = describe_connection_capabilities(
+            device,
+            hardware_methods_enabled=hardware_methods_enabled,
+        )
+        lines = ["No compatible methods are currently available."]
+
+        if capabilities["download_mode"]:
+            if capabilities["hardware_methods_enabled"]:
+                lines.append(
+                    "Hardware methods are enabled, but no compatible implemented method is available."
+                )
             else:
                 lines.append("Hardware methods are disabled.")
             lines.append("Device detection is working correctly.")
-            return " ".join(lines)
-        return "No compatible methods are currently available."
+        elif not capabilities["adb_available"]:
+            lines.append(
+                f"Connection state: {capabilities['connection_type']}. "
+                "Authorized ADB is unavailable."
+            )
+
+        return " ".join(lines)
 
     @staticmethod
     def format_ai_analysis_text(device, analysis, available_methods):

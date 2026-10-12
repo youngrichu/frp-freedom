@@ -28,7 +28,7 @@ class DeviceInfo:
     sdk_version: str
     bootloader_version: str
     frp_status: str
-    connection_type: str  # adb, fastboot, download, modem
+    connection_type: str  # adb, adb_unauthorized, adb_restricted, fastboot, download, modem
     chipset: str = "unknown"
     imei: str = ""
     brand: str = "unknown"
@@ -58,6 +58,26 @@ class DeviceInfo:
             "bootloader_status": self.bootloader_status,
             "root_status": self.root_status
         }
+
+
+def describe_connection_capabilities(device: DeviceInfo, hardware_methods_enabled: bool = False) -> Dict[str, object]:
+    """Return transport-level capability facts without invoking AI or device writes."""
+    connection_type = (device.connection_type or "unknown").lower()
+    android_version = (device.android_version or "").strip().lower()
+
+    return {
+        "connection_type": connection_type,
+        "adb_available": connection_type == "adb",
+        "fastboot_available": connection_type == "fastboot",
+        "download_mode": connection_type == "download",
+        "interface_access": "available" if connection_type == "adb" else "limited",
+        "hardware_methods_enabled": bool(hardware_methods_enabled),
+        "ai_metadata_sufficient": (
+            connection_type == "adb"
+            and android_version not in {"", "unknown", "none", "n/a"}
+        ),
+    }
+
 
 class DeviceManager:
     """Manages device detection and communication"""
@@ -138,7 +158,7 @@ class DeviceManager:
         fastboot_devices = self._scan_fastboot_devices()
         devices.extend(fastboot_devices)
         
-        # Scan download mode devices (placeholder for future implementation)
+        # Scan Samsung Download/Odin mode devices via Heimdall
         download_devices = self._scan_download_mode_devices()
         devices.extend(download_devices)
         

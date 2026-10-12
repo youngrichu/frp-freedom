@@ -10,7 +10,7 @@ import threading
 import logging
 from typing import List, Callable, Optional
 
-from ..core.device_manager import DeviceManager, DeviceInfo
+from ..core.device_manager import DeviceManager, DeviceInfo, describe_connection_capabilities
 from ..core.samsung_adb_enabler import SamsungADBEnabler
 
 class DeviceSelectionFrame(ttk.Frame):
@@ -352,12 +352,46 @@ Device Connection Guide
             self.info_button.configure(state='disabled')
             self.update_device_details(None)
     
+    @staticmethod
+    def format_capability_summary(capabilities) -> str:
+        """Render connection capabilities from canonical transport facts."""
+        hardware_status = (
+            "Enabled"
+            if capabilities.get("hardware_methods_enabled")
+            else "Disabled"
+        )
+        ai_status = (
+            "Available"
+            if capabilities.get("ai_metadata_sufficient")
+            else "Diagnostic only"
+        )
+        interface_status = str(
+            capabilities.get("interface_access", "limited")
+        ).title()
+
+        return "\n".join([
+            f"ADB Transport: {'Available' if capabilities.get('adb_available') else 'Not Available'}",
+            f"Fastboot Transport: {'Available' if capabilities.get('fastboot_available') else 'Not Available'}",
+            f"Hardware Methods Configuration: {hardware_status}",
+            f"Interface Access: {interface_status}",
+            f"AI Analysis: {ai_status}",
+        ])
+
     def update_device_details(self, device: Optional[DeviceInfo]):
         """Update the device details tab"""
         self.details_text.configure(state='normal')
         self.details_text.delete('1.0', tk.END)
         
         if device:
+            capabilities = describe_connection_capabilities(
+                device,
+                hardware_methods_enabled=bool(
+                    self.device_manager.config.get(
+                        "bypass_methods.hardware_methods", False
+                    )
+                ),
+            )
+            capability_summary = self.format_capability_summary(capabilities)
             details = f"""
 Device Details:
 {'=' * 50}
@@ -389,10 +423,7 @@ Hardware Information:
   IMEI: {getattr(device, 'imei', 'Not Available')}
 
 Bypass Compatibility:
-  ADB Methods: {'Available' if device.connection_type == 'adb' else 'Not Available'}
-  Fastboot Methods: {'Available' if device.connection_type == 'fastboot' else 'Not Available'}
-  Hardware Methods: {'May be Available' if device.brand else 'Unknown'}
-  Interface Methods: {'Available' if device.connection_type == 'adb' else 'Limited'}
+{capability_summary}
 
 Notes:
 • FRP bypass success depends on Android version and security patch level
@@ -494,7 +525,17 @@ Build ID: {device.build_id or 'Unknown'}
         
         security_text = tk.Text(security_frame, wrap=tk.WORD, font=('Courier', 10))
         security_text.pack(fill=tk.BOTH, expand=True)
-        
+
+        capabilities = describe_connection_capabilities(
+            device,
+            hardware_methods_enabled=bool(
+                self.device_manager.config.get(
+                    "bypass_methods.hardware_methods", False
+                )
+            ),
+        )
+        capability_summary = self.format_capability_summary(capabilities)
+
         security_info = f"""
 Security Information:
 
@@ -504,11 +545,8 @@ Root Status: {device.root_status or 'Unknown'}
 Encryption Status: {device.encryption_status or 'Unknown'}
 Security Patch: {device.security_patch or 'Unknown'}
 
-Bypass Recommendations:
-{'• ADB methods available' if device.connection_type == 'adb' else '• ADB methods not available'}
-{'• Fastboot methods available' if device.connection_type == 'fastboot' else '• Fastboot methods not available'}
-• Hardware methods may be available depending on chipset
-• Interface methods {'available' if device.connection_type == 'adb' else 'limited'}
+Capability Diagnostics:
+{capability_summary}
 """
         
         security_text.insert('1.0', security_info)
