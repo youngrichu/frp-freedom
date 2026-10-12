@@ -70,6 +70,24 @@
 - **Encryption**: cryptography
 - **Utilities**: psutil, requests, pyyaml
 
+### Optional Low-Level Protocol Tools
+
+The application can discover external tools for read-only protocol diagnostics:
+
+- **Samsung Download Mode**: Heimdall (`heimdall`)
+- **Qualcomm EDL**: the open-source `edl` CLI (`edl` or `edl.py`)
+- **MediaTek**: `mtk`, SP Flash Tool, or compatible CLI distributions
+
+Discovery checks an explicit config path first, then an environment variable,
+the repository's `tools/` directory, and finally `PATH`. The supported
+environment variables are `FRP_FREEDOM_HEIMDALL_PATH`,
+`FRP_FREEDOM_EDL_PATH`, and `FRP_FREEDOM_MEDIATEK_PATH`. Paths can also be set
+under `tools.<name>.path` in the configuration file.
+
+Use **Tools → Protocol Diagnostics** to inspect availability and recognized
+Qualcomm EDL or MediaTek BootROM USB modes. This diagnostic layer does not
+flash, erase, or modify device partitions.
+
 ## 🚀 Quick Start
 
 📖 **For detailed setup instructions, see [SETUP_GUIDE.md](SETUP_GUIDE.md)**

@@ -60,6 +60,11 @@ class Config:
                 "supported_android_versions": ["5.0", "15.0"],
                 "timeout_seconds": 30
             },
+            "tools": {
+                "heimdall": {"path": ""},
+                "edl": {"path": ""},
+                "mediatek": {"path": ""}
+            },
             "bypass_methods": {
                 "adb_exploits": True,
                 "bootloader_exploits": True,

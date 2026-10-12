@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass
 import serial.tools.list_ports
 from .samsung_adb_enabler import SamsungADBEnabler
+from .protocol_tools import ProtocolToolRegistry
 
 @dataclass
 class DeviceInfo:
@@ -67,7 +68,16 @@ class DeviceManager:
         self.logger = logging.getLogger(__name__)
         self.adb_path = self._find_adb_binary()
         self.fastboot_path = self._find_fastboot_binary()
+        self.protocol_tools = ProtocolToolRegistry(config)
         self.connected_devices: List[DeviceInfo] = []
+
+    def get_protocol_diagnostics(self, probe_versions: bool = False) -> Dict:
+        """Report low-level tool availability and recognized USB modes.
+
+        Version probing launches each installed tool with a non-destructive
+        help/version argument and is therefore opt-in.
+        """
+        return self.protocol_tools.diagnostics(probe_versions=probe_versions)
         
     def _find_adb_binary(self) -> Optional[Path]:
         """Find ADB binary in system PATH or bundled tools"""

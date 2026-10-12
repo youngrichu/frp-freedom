@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
 import logging
+import json
 from typing import Optional, Dict, Any, Callable
 from pathlib import Path
 
@@ -202,6 +203,7 @@ class FRPFreedomApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Device Information", command=self.show_device_info)
+        tools_menu.add_command(label="Protocol Diagnostics", command=self.show_protocol_diagnostics)
         tools_menu.add_command(label="Refresh Devices", command=self.refresh_devices)
         tools_menu.add_command(label="Settings", command=self.show_settings)
         
@@ -679,6 +681,21 @@ FRP Status: {cls._format_device_value(getattr(device, 'frp_status', None))}
 
         info_text = self.format_device_info_text(self.selected_device)
         messagebox.showinfo("Device Information", info_text)
+
+    def show_protocol_diagnostics(self):
+        """Show discovered low-level protocol tools and USB modes."""
+        try:
+            diagnostics = self.device_manager.get_protocol_diagnostics()
+            messagebox.showinfo(
+                "Protocol Diagnostics",
+                json.dumps(diagnostics, indent=2)
+            )
+        except Exception as e:
+            self.logger.error(f"Protocol diagnostics failed: {e}")
+            messagebox.showerror(
+                "Protocol Diagnostics",
+                f"Unable to inspect protocol tools: {e}"
+            )
     
     def show_settings(self):
         """Show settings dialog"""

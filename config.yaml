@@ -16,6 +16,15 @@ device:
   connection_timeout: 30
   command_timeout: 60
 
+# Optional protocol tool overrides. Leave blank to discover bundled tools or PATH.
+tools:
+  heimdall:
+    path: ""
+  edl:
+    path: ""
+  mediatek:
+    path: ""
+
 ui:
   theme: "default"
   window_size: "1024x768"
