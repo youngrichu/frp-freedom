@@ -145,6 +145,53 @@ class DeviceManager:
         self.logger.warning("Fastboot binary not found. Some features may not work.")
         return None
     
+    def _device_priority_score(self, device: DeviceInfo) -> int:
+        """Score a discovered device so we keep the richest record when duplicates appear."""
+        connection_priority = {
+            "adb": 5,
+            "adb_unauthorized": 4,
+            "adb_restricted": 4,
+            "fastboot": 3,
+            "download": 3,
+            "modem": 2,
+            "unknown": 1,
+        }
+        connection_type = (getattr(device, "connection_type", "unknown") or "unknown").lower()
+        score = connection_priority.get(connection_type, 0)
+
+        for field_name in [
+            "model",
+            "manufacturer",
+            "android_version",
+            "frp_status",
+            "brand",
+            "chipset",
+            "serial",
+        ]:
+            field_value = getattr(device, field_name, "") or ""
+            if str(field_value).strip() and str(field_value).lower() != "unknown":
+                score += 1
+
+        return score
+
+    def _deduplicate_devices(self, devices: List[DeviceInfo]) -> List[DeviceInfo]:
+        """Keep the most informative record for each serial to avoid duplicate scans."""
+        best_by_serial: Dict[str, DeviceInfo] = {}
+
+        for device in devices:
+            if device is None:
+                continue
+
+            key = (device.serial or device.modem_port or device.model or "unknown").strip()
+            if not key or key == "unknown":
+                continue
+
+            current = best_by_serial.get(key)
+            if current is None or self._device_priority_score(device) > self._device_priority_score(current):
+                best_by_serial[key] = device
+
+        return list(best_by_serial.values())
+
     def scan_devices(self) -> List[DeviceInfo]:
         """Scan for connected Android devices"""
         self.logger.info("Scanning for connected devices...")
@@ -161,6 +208,8 @@ class DeviceManager:
         # Scan Samsung Download/Odin mode devices via Heimdall
         download_devices = self._scan_download_mode_devices()
         devices.extend(download_devices)
+
+        devices = self._deduplicate_devices(devices)
         
         # Update connected_devices BEFORE modem scan so matching works correctly
         self.connected_devices = devices
@@ -168,6 +217,8 @@ class DeviceManager:
         # Scan Samsung modems (merged into existing devices if matched)
         modem_devices = self.scan_samsung_modems()
         devices.extend(modem_devices)
+
+        devices = self._deduplicate_devices(devices)
         
         # Final update with any new modem-only devices
         self.connected_devices = devices
