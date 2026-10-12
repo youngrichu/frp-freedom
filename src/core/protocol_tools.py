@@ -304,6 +304,9 @@ class USBModeProbe:
         (0x0E8D, 0x2000),
         (0x0E8D, 0x2001),
     }
+    # Samsung Odin/download mode. Classified from the descriptor alone so a
+    # device scan never has to open a Heimdall session.
+    SAMSUNG_DOWNLOAD = {(0x04E8, 0x685D)}
 
     def scan(self) -> Tuple[List[USBDevice], Optional[str]]:
         try:
@@ -334,6 +337,8 @@ class USBModeProbe:
             return "qualcomm_edl"
         if identity in cls.MEDIATEK:
             return "mediatek_bootrom"
+        if identity in cls.SAMSUNG_DOWNLOAD:
+            return "samsung_download"
         return None
 
 

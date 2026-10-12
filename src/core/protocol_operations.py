@@ -11,6 +11,7 @@ instead of simulating success.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -40,6 +41,21 @@ def _serial_ports():
         return list(serial.tools.list_ports.comports())
     except Exception:
         return []
+
+
+def partition_absent_from_gpt(result: CommandResult, partition: str) -> bool:
+    """True when a GPT listing is real and does not name the partition.
+
+    An empty or one-line response is inconclusive: several clients print the
+    table on stderr, and a blank stdout used to count as "partition gone".
+    """
+    if not result.ok:
+        return False
+    text = f"{result.stdout}\n{result.stderr}"
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return False
+    return partition.lower() not in text.lower()
 
 
 def find_port_for_vid_pid(vendor_id: int, product_ids) -> str:
@@ -72,20 +88,34 @@ class HeimdallOperations(HeimdallTool):
     def print_pit(self) -> CommandResult:
         return self.run(("print-pit", "--no-reboot"), timeout=60)
 
-    def flash_partition(self, partition: str, image, reboot: bool = False) -> CommandResult:
-        image = Path(image)
-        if not image.is_file():
-            raise FlashError(f"Firmware image not found: {image}")
-        args = ["flash", f"--{partition}", str(image)]
+    def flash_partitions(self, images, reboot: bool = False) -> CommandResult:
+        """Flash every partition in one Heimdall session.
+
+        A separate invocation per partition re-handshakes download mode and
+        commonly fails after the first image, leaving mixed firmware.
+        """
+        if not images:
+            raise FlashError("No partitions to flash")
+        args = ["flash"]
+        for partition, image in images.items():
+            if not re.fullmatch(r"[A-Z0-9_]+", str(partition)):
+                raise FlashError(f"Unsafe partition name: {partition}")
+            image = Path(image)
+            if not image.is_file():
+                raise FlashError(f"Firmware image not found: {image}")
+            args += [f"--{partition}", str(image)]
         if not reboot:
             args.append("--no-reboot")
-        result = self.run(tuple(args), timeout=300)
+        result = self.run(tuple(args), timeout=600)
         if not result.ok:
             raise FlashError(
-                f"Heimdall flash of {partition} failed: "
+                "Heimdall flash failed: "
                 f"{result.error or result.stderr.strip()}"
             )
         return result
+
+    def flash_partition(self, partition: str, image, reboot: bool = False) -> CommandResult:
+        return self.flash_partitions({partition: image}, reboot=reboot)
 
 
 class EdlOperations(QualcommEDLTool):
@@ -274,6 +304,16 @@ class DeviceProtocolOperations:
                         ),
                         detail="MediaTek preloader/bootrom interface",
                     ))
+                elif device.mode == "samsung_download":
+                    found.append(SpecialModeDevice(
+                        mode="samsung_download",
+                        protocol="heimdall",
+                        port=find_port_for_vid_pid(
+                            0x04E8,
+                            {pid for _vid, pid in USBModeProbe.SAMSUNG_DOWNLOAD},
+                        ),
+                        detail="Samsung download (Odin) mode",
+                    ))
         except Exception as exc:
             self.logger.debug(f"USB special-mode scan failed: {exc}")
 
@@ -295,16 +335,15 @@ class DeviceProtocolOperations:
                 port=getattr(port, "device", "") or "",
                 detail="MediaTek preloader/bootrom interface",
             ))
-
-        try:
-            if self.heimdall.detect_device():
-                found.append(SpecialModeDevice(
-                    mode="samsung_download",
-                    protocol="heimdall",
-                    port="",
-                    detail="Samsung download (Odin) mode",
-                ))
-        except Exception as exc:
-            self.logger.debug(f"Heimdall detection failed: {exc}")
+        if "samsung_download" not in modes_seen:
+            for port in _serial_ports():
+                if (port.vid, port.pid) in USBModeProbe.SAMSUNG_DOWNLOAD:
+                    found.append(SpecialModeDevice(
+                        mode="samsung_download",
+                        protocol="heimdall",
+                        port=getattr(port, "device", "") or "",
+                        detail="Samsung download (Odin) mode",
+                    ))
+                    break
 
         return found

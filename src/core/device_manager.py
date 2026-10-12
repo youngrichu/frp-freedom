@@ -167,17 +167,20 @@ class DeviceManager:
         return devices
 
     def wait_for_connection(self, connection_types, timeout_seconds: float,
-                            poll_interval: float = 2.0) -> Optional[DeviceInfo]:
+                            poll_interval: float = 2.0,
+                            exclude_serials=None) -> Optional[DeviceInfo]:
         """Rescan until a device with one of the connection types appears.
 
-        Returns the first matching DeviceInfo, or None when the timeout
-        elapses. A timeout of 0 performs a single scan with no waiting.
+        Serials in exclude_serials are skipped, so a phone that was already
+        connected cannot be mistaken for the one a flash or ADB-enable just
+        brought up. A timeout of 0 performs a single scan with no waiting.
         """
+        excluded = set(exclude_serials or ())
         deadline = time.monotonic() + max(timeout_seconds, 0)
         while True:
             try:
                 for device in self.scan_devices():
-                    if device.connection_type in connection_types:
+                    if device.connection_type in connection_types and device.serial not in excluded:
                         return device
             except Exception as e:
                 self.logger.debug(f"Scan while waiting for connection failed: {e}")

@@ -33,11 +33,18 @@ def run_frp_removal_commands(device_manager, serial: str,
 
 
 def frp_indicators_cleared(device_manager, serial: str) -> bool:
-    """Check the on-device FRP indicators after a removal attempt."""
+    """Return True only on evidence that does not come from the removal writes.
+
+    ``ro.frp.pst`` is unset on many devices that are still FRP-locked, and
+    ``user_setup_complete`` / ``device_provisioned`` are the settings the
+    removal sequence itself just wrote, so neither counts. A dumpsys account
+    listing with no Google account is independent of those writes.
+    """
     success, output = device_manager.execute_adb_command(
-        serial, ['shell', 'getprop', 'ro.frp.pst'])
-    if success and not output.strip():
-        return True
-    success, output = device_manager.execute_adb_command(
-        serial, ['shell', 'settings', 'get', 'secure', 'user_setup_complete'])
-    return success and output.strip() == '1'
+        serial, ['shell', 'dumpsys', 'account'])
+    if not success or not output.strip():
+        return False
+    lowered = output.lower()
+    if 'com.google' in lowered:
+        return False
+    return 'accounts: 0' in lowered

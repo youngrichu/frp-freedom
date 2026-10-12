@@ -73,33 +73,29 @@ def test_run_frp_removal_commands_counts_successes():
     assert device_manager.execute_adb_command.call_count == len(FRP_REMOVAL_COMMANDS)
 
 
-def test_frp_indicators_cleared_when_pst_empty():
+def test_frp_indicators_empty_pst_is_inconclusive():
     device_manager = Mock()
     device_manager.execute_adb_command = Mock(return_value=(True, ""))
+    assert frp_indicators_cleared(device_manager, "serial-001") is False
+
+
+def test_frp_indicators_ignore_settings_the_removal_just_wrote():
+    device_manager = Mock()
+    device_manager.execute_adb_command = Mock(return_value=(True, "1"))
+    assert frp_indicators_cleared(device_manager, "serial-001") is False
+
+
+def test_frp_indicators_cleared_when_no_google_account():
+    device_manager = Mock()
+    device_manager.execute_adb_command = Mock(return_value=(True, "Accounts: 0"))
     assert frp_indicators_cleared(device_manager, "serial-001") is True
 
 
-def test_frp_indicators_cleared_via_setup_complete():
+def test_frp_indicators_not_cleared_when_google_account_remains():
     device_manager = Mock()
-
-    def side_effect(serial, command):
-        if "getprop" in command:
-            return True, "0x0"
-        return True, "1"
-
-    device_manager.execute_adb_command = Mock(side_effect=side_effect)
-    assert frp_indicators_cleared(device_manager, "serial-001") is True
-
-
-def test_frp_indicators_not_cleared():
-    device_manager = Mock()
-
-    def side_effect(serial, command):
-        if "getprop" in command:
-            return True, "0x0"
-        return True, "0"
-
-    device_manager.execute_adb_command = Mock(side_effect=side_effect)
+    device_manager.execute_adb_command = Mock(
+        return_value=(True, "Accounts: 1\nAccount {name=x, type=com.google}")
+    )
     assert frp_indicators_cleared(device_manager, "serial-001") is False
 
 
@@ -122,6 +118,20 @@ def test_wait_for_connection_times_out_without_match():
     manager.scan_devices = Mock(return_value=[])
 
     assert manager.wait_for_connection(["adb"], timeout_seconds=0) is None
+
+
+def test_wait_for_connection_skips_excluded_serials():
+    manager = DeviceManager.__new__(DeviceManager)
+    manager.logger = logging.getLogger("test")
+    other = make_device(serial="other-phone", connection_type="adb")
+    target = make_device(serial="new-phone", connection_type="adb")
+    manager.scan_devices = Mock(return_value=[other, target])
+
+    found = manager.wait_for_connection(
+        ["adb"], timeout_seconds=0, exclude_serials={"other-phone"}
+    )
+
+    assert found is target
 
 
 # ---------------------------------------------------------------------------
@@ -223,16 +233,20 @@ class FakeHeimdall:
     def detect_device(self):
         return self.detected
 
-    def flash_partition(self, partition, image, reboot=False):
-        self.flashed.append((partition, Path(image).name, reboot))
-        if partition in self.fail_partitions:
-            raise FlashError(f"flash of {partition} failed")
+    def flash_partitions(self, images, reboot=False):
+        for partition, image in images.items():
+            self.flashed.append((partition, Path(image).name, reboot))
+            if partition in self.fail_partitions:
+                raise FlashError(f"flash of {partition} failed")
 
 
-def make_combination_manager(heimdall, config, adb_device=None, adb_ok=True):
+def make_combination_manager(heimdall, config, adb_device=None, adb_ok=True, existing_adb=()):
     device_manager = Mock()
+    device_manager.scan_devices = Mock(return_value=list(existing_adb))
     device_manager.wait_for_connection = Mock(return_value=adb_device)
-    device_manager.execute_adb_command = Mock(return_value=(adb_ok, ""))
+    device_manager.execute_adb_command = Mock(
+        return_value=(adb_ok, "Accounts: 0" if adb_ok else "")
+    )
     operations = SimpleNamespace(heimdall=heimdall)
     return HardwareExploitManager(config, device_manager, operations=operations)
 
@@ -274,17 +288,21 @@ def test_combination_flash_success(tmp_path):
     })
     heimdall = FakeHeimdall()
     adb_device = make_device(serial="adb-999", connection_type="adb")
-    manager = make_combination_manager(heimdall, config, adb_device=adb_device)
+    other = make_device(serial="other-phone", connection_type="adb")
+    manager = make_combination_manager(
+        heimdall, config, adb_device=adb_device, existing_adb=[other])
 
     result = manager.samsung_combination_flash_exploit(make_device(), noop_progress)
 
     assert result["result"] == BypassResult.SUCCESS
+    assert manager.device_manager.wait_for_connection.call_args.kwargs["exclude_serials"] == {
+        "other-phone"
+    }
     assert result["details"]["reflash_stock_required"] is True
     flashed_partitions = [entry[0] for entry in heimdall.flashed]
     assert flashed_partitions == ["BOOT", "RECOVERY"]
-    # Only the final partition flashes with reboot enabled
-    assert heimdall.flashed[-1][2] is True
-    assert all(entry[2] is False for entry in heimdall.flashed[:-1])
+    # One Heimdall session, rebooting at the end of it
+    assert {entry[2] for entry in heimdall.flashed} == {True}
 
 
 def test_combination_flash_fails_when_all_flashes_fail(tmp_path):
@@ -296,22 +314,30 @@ def test_combination_flash_fails_when_all_flashes_fail(tmp_path):
     result = manager.samsung_combination_flash_exploit(make_device(), noop_progress)
 
     assert result["result"] == BypassResult.FAILED
-    assert "BOOT" in result["details"]["failures"]
+    assert "partially written" in result["message"]
+    assert "BOOT" in result["details"]["partitions"]
 
 
-def test_combination_flash_partial_when_some_partitions_fail(tmp_path):
-    archive = make_tar(tmp_path / "combo.tar", [
+def test_combination_flash_skips_modem_and_rejects_nested_archives(tmp_path):
+    safe = make_tar(tmp_path / "combo.tar", [
         ("boot.img", b"boot"),
-        ("recovery.img", b"recovery"),
+        ("modem.bin", b"radio"),
     ])
-    config = DictConfig({"tools.heimdall.combination_image": str(archive)})
-    heimdall = FakeHeimdall(fail_partitions={"RECOVERY"})
-    manager = make_combination_manager(heimdall, config)
+    config = DictConfig({"tools.heimdall.combination_image": str(safe)})
+    heimdall = FakeHeimdall()
+    manager = make_combination_manager(heimdall, config, adb_device=make_device(serial="new"))
 
     result = manager.samsung_combination_flash_exploit(make_device(), noop_progress)
 
-    assert result["result"] == BypassResult.PARTIAL
-    assert result["details"]["flashed"] == 1
+    assert result["result"] == BypassResult.SUCCESS
+    assert [entry[0] for entry in heimdall.flashed] == ["BOOT"]
+
+    nested = make_tar(tmp_path / "nested.tar", [("AP.tar", b"not-an-image")])
+    nested_config = DictConfig({"tools.heimdall.combination_image": str(nested)})
+    nested_manager = make_combination_manager(FakeHeimdall(), nested_config)
+    nested_result = nested_manager.samsung_combination_flash_exploit(make_device(), noop_progress)
+    assert nested_result["result"] == BypassResult.FAILED
+    assert "nested archive" in nested_result["message"]
 
 
 def test_combination_flash_rejects_lz4_members(tmp_path):
@@ -355,12 +381,19 @@ class FakeEnabler:
         return self._enable_ok
 
 
-def make_test_mode_manager(monkeypatch, enabler, adb_device=None, adb_ok=True):
+def modem_port(device="/dev/ttyACM0"):
+    return SimpleNamespace(device=device, description="Samsung Android Modem")
+
+
+def make_test_mode_manager(monkeypatch, enabler, adb_device=None, adb_ok=True, existing_adb=()):
     monkeypatch.setattr(
         "src.bypass.interface_exploits.SamsungADBEnabler", lambda: enabler)
     device_manager = Mock()
+    device_manager.scan_devices = Mock(return_value=list(existing_adb))
     device_manager.wait_for_connection = Mock(return_value=adb_device)
-    device_manager.execute_adb_command = Mock(return_value=(adb_ok, ""))
+    device_manager.execute_adb_command = Mock(
+        return_value=(adb_ok, "Accounts: 0" if adb_ok else "")
+    )
     return InterfaceExploitManager(Config(), device_manager)
 
 
@@ -385,8 +418,18 @@ def test_test_mode_adb_uses_device_modem_port_when_set(monkeypatch):
     assert result["details"]["port"] == "/dev/ttyACM9"
 
 
+def test_test_mode_adb_ignores_non_modem_samsung_ports(monkeypatch):
+    enabler = FakeEnabler(ports=[SimpleNamespace(device="/dev/ttyACM0", description="Samsung MTP")])
+    manager = make_test_mode_manager(monkeypatch, enabler)
+
+    result = manager.samsung_test_mode_adb_exploit(make_device(), noop_progress)
+
+    assert result["result"] == BypassResult.FAILED
+    assert "modem" in result["message"].lower()
+
+
 def test_test_mode_adb_fails_when_enable_sequence_fails(monkeypatch):
-    enabler = FakeEnabler(ports=[SimpleNamespace(device="/dev/ttyACM0")], enable_ok=False)
+    enabler = FakeEnabler(ports=[modem_port()], enable_ok=False)
     manager = make_test_mode_manager(monkeypatch, enabler)
 
     result = manager.samsung_test_mode_adb_exploit(make_device(), noop_progress)
@@ -396,7 +439,7 @@ def test_test_mode_adb_fails_when_enable_sequence_fails(monkeypatch):
 
 
 def test_test_mode_adb_fails_when_adb_never_appears(monkeypatch):
-    enabler = FakeEnabler(ports=[SimpleNamespace(device="/dev/ttyACM0")])
+    enabler = FakeEnabler(ports=[modem_port()])
     manager = make_test_mode_manager(monkeypatch, enabler, adb_device=None)
 
     result = manager.samsung_test_mode_adb_exploit(make_device(), noop_progress)
@@ -406,22 +449,28 @@ def test_test_mode_adb_fails_when_adb_never_appears(monkeypatch):
 
 
 def test_test_mode_adb_success(monkeypatch):
-    enabler = FakeEnabler(ports=[SimpleNamespace(device="/dev/ttyACM0")])
+    enabler = FakeEnabler(ports=[modem_port()])
     adb_device = make_device(serial="adb-123", connection_type="adb")
-    manager = make_test_mode_manager(monkeypatch, enabler, adb_device=adb_device)
+    other = make_device(serial="other-phone", connection_type="adb")
+    manager = make_test_mode_manager(
+        monkeypatch, enabler, adb_device=adb_device, existing_adb=[other])
 
     result = manager.samsung_test_mode_adb_exploit(make_device(), noop_progress)
 
     assert result["result"] == BypassResult.SUCCESS
     assert result["details"]["commands_executed"] == len(FRP_REMOVAL_COMMANDS)
+    assert manager.device_manager.wait_for_connection.call_args.kwargs["exclude_serials"] == {
+        "other-phone"
+    }
 
 
 def test_test_mode_adb_partial_when_indicators_remain(monkeypatch):
-    enabler = FakeEnabler(ports=[SimpleNamespace(device="/dev/ttyACM0")])
+    enabler = FakeEnabler(ports=[modem_port()])
     adb_device = make_device(serial="adb-123", connection_type="adb")
     monkeypatch.setattr(
         "src.bypass.interface_exploits.SamsungADBEnabler", lambda: enabler)
     device_manager = Mock()
+    device_manager.scan_devices = Mock(return_value=[])
     device_manager.wait_for_connection = Mock(return_value=adb_device)
 
     def adb_side_effect(serial, command):
@@ -440,7 +489,7 @@ def test_test_mode_adb_partial_when_indicators_remain(monkeypatch):
 
 
 def test_test_mode_adb_fails_when_no_removal_command_succeeds(monkeypatch):
-    enabler = FakeEnabler(ports=[SimpleNamespace(device="/dev/ttyACM0")])
+    enabler = FakeEnabler(ports=[modem_port()])
     adb_device = make_device(serial="adb-123", connection_type="adb")
     manager = make_test_mode_manager(
         monkeypatch, enabler, adb_device=adb_device, adb_ok=False)

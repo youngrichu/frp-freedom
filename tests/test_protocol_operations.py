@@ -18,6 +18,7 @@ from src.core.protocol_operations import (
     HeimdallOperations,
     MtkOperations,
     SpecialModeDevice,
+    partition_absent_from_gpt,
 )
 from src.core.protocol_tools import BinaryResolver, CommandResult, ToolInfo, USBDevice
 
@@ -285,6 +286,43 @@ def test_scan_special_modes_usb_failure_does_not_hide_serial_detection(monkeypat
     found = ops.scan_special_modes()
 
     assert [d.mode for d in found] == ["edl"]
+
+
+def test_partition_absent_from_gpt_requires_a_real_table():
+    assert partition_absent_from_gpt(ok_result(stdout=""), "frp") is False
+    assert partition_absent_from_gpt(ok_result(stdout="boot_a"), "frp") is False
+    assert partition_absent_from_gpt(ok_result(stdout="boot_a\nsystem_a"), "frp") is True
+    assert partition_absent_from_gpt(ok_result(stdout="boot_a\nfrp"), "frp") is False
+    # Table printed on stderr still counts
+    assert partition_absent_from_gpt(
+        CommandResult(ok=True, command=("edl",), returncode=0, stderr="boot_a\nsystem_a"),
+        "frp",
+    ) is True
+
+
+def test_scan_special_modes_does_not_invoke_heimdall(monkeypatch):
+    monkeypatch.setattr("src.core.protocol_operations._serial_ports", lambda: [])
+    ops = make_operations(FakeUSBProbe([]))
+
+    def boom():
+        raise AssertionError("heimdall detect must not run during a scan")
+
+    ops.heimdall.detect_device = boom
+    assert ops.scan_special_modes() == []
+
+
+def test_scan_special_modes_finds_samsung_download_by_usb_id(monkeypatch):
+    monkeypatch.setattr(
+        "src.core.protocol_operations._serial_ports",
+        lambda: [SimpleNamespace(vid=0x04E8, pid=0x685D, device="/dev/ttyACM1", description="")],
+    )
+    ops = make_operations(FakeUSBProbe([USBDevice(0x04E8, 0x685D, "samsung_download")]))
+    ops.heimdall.detect_device = lambda: (_ for _ in ()).throw(AssertionError("no heimdall"))
+
+    found = ops.scan_special_modes()
+
+    assert [device.mode for device in found] == ["samsung_download"]
+    assert found[0].port == "/dev/ttyACM1"
 
 
 def test_scan_special_modes_empty_when_nothing_present(monkeypatch):

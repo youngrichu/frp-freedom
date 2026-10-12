@@ -101,6 +101,7 @@ def test_protocol_tool_reports_timeout(tmp_path):
 def test_usb_mode_probe_classifies_known_boot_modes():
     assert USBModeProbe.classify(0x05C6, 0x9008) == "qualcomm_edl"
     assert USBModeProbe.classify(0x0E8D, 0x0003) == "mediatek_bootrom"
+    assert USBModeProbe.classify(0x04E8, 0x685D) == "samsung_download"
     assert USBModeProbe.classify(0x18D1, 0x4EE7) is None
 
 

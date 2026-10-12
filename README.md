@@ -120,14 +120,17 @@ fastboot-based methods.
   partition, reporting which variant worked.
 - **Samsung combination firmware flash** (`samsung_combination_flash`):
   flashes a user-supplied combination (factory) firmware archive
-  (`tools.heimdall.combination_image`) member-by-member via Heimdall, waits
-  for the factory binary's ADB session, and runs the FRP removal sequence.
-  Reflashing stock firmware afterwards is required. lz4-compressed images
-  must be decompressed first (Heimdall cannot flash them).
+  (`tools.heimdall.combination_image`) in a single Heimdall session, waits
+  for a *new* ADB device (phones already connected are ignored), and runs
+  the FRP removal sequence. Only boot, recovery, system, vendor, super,
+  vbmeta, and related images are written; modem and bootloader members are
+  skipped. Reflashing stock firmware afterwards is required. lz4-compressed
+  images and nested archives are refused (Heimdall cannot flash them).
 - **Samsung test-mode ADB** (`samsung_test_mode_adb`): a one-shot version of
   the modem AT-command flow — enter `*#0*#` in the emergency dialer, the app
-  drives the ADB-enable sequence over the Samsung modem port, waits for the
-  ADB session (`bypass.test_mode_timeout`), and removes FRP in one run.
+  drives the ADB-enable sequence over the Samsung modem port (not an MTP
+  interface that happens to share Samsung's USB vendor id), waits for that
+  phone's ADB session (`bypass.test_mode_timeout`), and removes FRP in one run.
 
 Devices detected in EDL, MediaTek preloader, or Samsung download mode appear
 in the device list with connection types `edl`, `mtk_download`, and
