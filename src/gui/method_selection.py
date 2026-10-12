@@ -203,6 +203,71 @@ class MethodSelectionFrame(ttk.Frame):
             self.logger.error(f"Failed to load methods: {e}")
             messagebox.showerror("Error", f"Failed to load bypass methods: {e}")
     
+    @staticmethod
+    def format_method_list_status(device, available_methods, hardware_methods_enabled):
+        if available_methods:
+            return ""
+        if device.connection_type == "download":
+            lines = ["No compatible methods are currently available."]
+            if hardware_methods_enabled:
+                lines.append("Hardware methods are enabled, but no compatible implemented method is available.")
+            else:
+                lines.append("Hardware methods are disabled.")
+            lines.append("Device detection is working correctly.")
+            return " ".join(lines)
+        return "No compatible methods are currently available."
+
+    @staticmethod
+    def format_ai_analysis_text(device, analysis, available_methods):
+        profile = analysis.get("ai_analysis", {})
+        score = profile.get("vulnerability_score")
+        score_text = "Unavailable" if score is None else f"{score:.2f}/1.0"
+        complexity = str(profile.get("frp_complexity", "Unknown")).upper()
+        lines = [
+            "AI DEVICE ANALYSIS",
+            "=" * 50,
+            "",
+            f"Device: {device.brand} {device.model}",
+            f"Android Version: {device.android_version}",
+            f"FRP Status: {device.frp_status or chr(85)+chr(110)+chr(107)+chr(110)+chr(111)+chr(119)+chr(110)}",
+            "",
+            "SECURITY ASSESSMENT",
+            "-" * 30,
+            profile.get("security_assessment", "No assessment available"),
+            "",
+            f"FRP COMPLEXITY: {complexity}",
+            f"VULNERABILITY SCORE: {score_text}",
+            "",
+            "RECOMMENDED METHODS",
+            "-" * 30
+        ]
+        recommended = profile.get("recommended_methods", [])
+        probabilities = profile.get("success_probabilities", {})
+        rendered = 0
+        for method_name in recommended[:5]:
+            method = next((m for m in available_methods if m.name == method_name), None)
+            if method is not None:
+                rendered += 1
+                lines.append(f"{rendered}. {method.description}")
+                lines.append(f"   Success Probability: {probabilities.get(method_name, 0.5):.1%}")
+                lines.append(f"   Risk Level: {method.risk_level.title()}")
+                lines.append("")
+        if rendered == 0:
+            lines.append("No compatible methods are currently available.")
+        if device.connection_type == "download" and not available_methods:
+            if profile.get("hardware_methods_enabled", False):
+                lines.append("Hardware methods are enabled, but no compatible implemented method is available.")
+            else:
+                lines.append("Hardware methods are disabled.")
+            lines.append("Device detection is working correctly.")
+        lines.extend([
+            "",
+            "BYPASS STRATEGY",
+            "-" * 30,
+            profile.get("bypass_strategy", "No strategy available")
+        ])
+        return "\n".join(lines)
+
     def populate_method_tree(self):
         """Populate the method tree with available methods"""
         # Clear existing items
@@ -225,6 +290,10 @@ class MethodSelectionFrame(ttk.Frame):
         self.method_tree.tag_configure('low_risk', background='#e8f5e8')
         self.method_tree.tag_configure('medium_risk', background='#fff3cd')
         self.method_tree.tag_configure('high_risk', background='#f8d7da')
+        if not self.available_methods:
+            hardware_enabled = bool(self.bypass_manager.config.get("bypass_methods.hardware_methods", False))
+            status = self.format_method_list_status(self.device, self.available_methods, hardware_enabled)
+            self.selection_label.configure(text=status)
     
     def get_ai_analysis(self):
         """Get AI analysis for the device"""
@@ -250,63 +319,14 @@ class MethodSelectionFrame(ttk.Frame):
         analysis_thread.start()
     
     def display_ai_analysis(self, analysis):
-        """Display AI analysis results"""
-        self.ai_text.configure(state='normal')
-        self.ai_text.delete('1.0', tk.END)
-        
-        # Format analysis text
-        profile = analysis.get('device_profile', {})
-        
-        analysis_text = f"""AI DEVICE ANALYSIS
-{'=' * 50}
-
-Device: {self.device.brand} {self.device.model}
-Android Version: {self.device.android_version}
-FRP Status: {self.device.frp_status if self.device.frp_status else 'Unknown'}
-
-SECURITY ASSESSMENT
-{'-' * 30}
-{analysis.get('security_assessment', 'No assessment available')}
-
-FRP COMPLEXITY: {profile.get('frp_complexity', 'Unknown').upper()}
-VULNERABILITY SCORE: {profile.get('vulnerability_score', 0):.2f}/1.0
-
-RECOMMENDED METHODS
-{'-' * 30}
-"""
-        
-        recommended_methods = profile.get('recommended_methods', [])
-        success_probs = profile.get('success_probabilities', {})
-        
-        if recommended_methods:
-            for i, method_name in enumerate(recommended_methods[:5], 1):
-                method = next((m for m in self.available_methods if m.name == method_name), None)
-                if method:
-                    prob = success_probs.get(method_name, 0.5)
-                    analysis_text += f"{i}. {method.description}\n"
-                    analysis_text += f"   Success Probability: {prob:.1%}\n"
-                    analysis_text += f"   Risk Level: {method.risk_level.title()}\n\n"
-        else:
-            analysis_text += "No specific recommendations available.\n\n"
-        
-        analysis_text += f"""BYPASS STRATEGY
-{'-' * 30}
-{analysis.get('bypass_strategy', 'No strategy available')}
-
-RECOMMENDATIONS
-{'-' * 30}
-• Start with the highest probability methods
-• Consider risk levels based on your comfort level
-• Have backup methods ready in case primary methods fail
-• Monitor device responses carefully during execution
-"""
-        
-        self.ai_text.insert('1.0', analysis_text)
-        self.ai_text.configure(state='disabled')
-        
-        # Switch to AI tab
+        """Display AI analysis results."""
+        self.ai_text.configure(state="normal")
+        self.ai_text.delete("1.0", tk.END)
+        analysis_text = self.format_ai_analysis_text(self.device, analysis, self.available_methods)
+        self.ai_text.insert("1.0", analysis_text)
+        self.ai_text.configure(state="disabled")
         self.notebook.select(1)
-    
+
     def display_ai_error(self, error_msg):
         """Display AI analysis error"""
         self.ai_text.configure(state='normal')
@@ -358,8 +378,8 @@ REQUIREMENTS
             details_text += f"• Android {version}\n"
         
         # Add AI-specific information if available
-        if self.ai_analysis and 'device_profile' in self.ai_analysis:
-            success_probs = self.ai_analysis['device_profile'].get('success_probabilities', {})
+        if self.ai_analysis and 'ai_analysis' in self.ai_analysis:
+            success_probs = self.ai_analysis['ai_analysis'].get('success_probabilities', {})
             if method.name in success_probs:
                 ai_prob = success_probs[method.name]
                 details_text += f"\nAI ANALYSIS\n{'-' * 20}\n"
@@ -398,11 +418,11 @@ REQUIREMENTS
     
     def select_recommended(self):
         """Select AI recommended methods"""
-        if not self.ai_analysis or 'device_profile' not in self.ai_analysis:
+        if not self.ai_analysis or 'ai_analysis' not in self.ai_analysis:
             messagebox.showinfo("Info", "Please run AI analysis first to get recommendations.")
             return
         
-        recommended_names = self.ai_analysis['device_profile'].get('recommended_methods', [])
+        recommended_names = self.ai_analysis['ai_analysis'].get('recommended_methods', [])
         self.selected_methods = [m for m in self.available_methods if m.name in recommended_names[:3]]  # Top 3
         
         # Update tree display

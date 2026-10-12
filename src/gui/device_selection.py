@@ -439,7 +439,7 @@ Proceed with this device?
 """
         
         if messagebox.askyesno("Confirm Selection", message):
-            self.selection_callback(self.selected_device)
+            self.selection_callback(device)
     
     def show_device_info(self):
         """Show detailed device information in a popup"""

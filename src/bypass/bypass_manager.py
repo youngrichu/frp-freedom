@@ -298,6 +298,13 @@ class BypassManager:
                 if device_major not in method_majors:
                     return False
         
+        # Download/Odin mode can only use verified hardware methods.
+        if device.connection_type == 'download':
+            return (
+                method.category == 'hardware'
+                and method.name != 'download_mode_flash'
+            )
+
         # Check connection type requirements for normal devices
         if device.connection_type not in ['adb_unauthorized', 'adb_restricted']:
             if method.category == 'adb' and device.connection_type not in ['adb']:
@@ -504,6 +511,38 @@ class BypassManager:
     
     def get_ai_device_analysis(self, device: DeviceInfo) -> Dict[str, Any]:
         """Get comprehensive AI analysis of the device"""
+        if device.connection_type == "download":
+            hardware_methods_enabled = bool(self.config.get("bypass_methods.hardware_methods", False))
+            compatible_methods = [
+                method
+                for method in self.available_methods
+                if self._is_method_compatible(method, device)
+            ]
+            method_names = [method.name for method in compatible_methods]
+            if method_names:
+                strategy = "Download Mode detected. ADB is unavailable in this connection state. Compatible hardware methods are enabled; review implementation status before execution."
+            else:
+                strategy = "Download Mode detected. ADB is unavailable in this connection state. No implemented compatible methods are currently enabled."
+            return {
+                "device_info": {
+                    "brand": device.brand,
+                    "model": device.model,
+                    "android_version": device.android_version,
+                    "security_patch": device.security_patch
+                },
+                "ai_analysis": {
+                    "analysis_available": False,
+                    "complexity_score": None,
+                    "frp_complexity": "unknown",
+                    "vulnerability_score": None,
+                    "recommended_methods": method_names,
+                    "success_probabilities": {},
+                    "security_assessment": "Download Mode diagnostic state - vulnerability scoring is unavailable with the current device metadata.",
+                    "bypass_strategy": strategy,
+                    "hardware_methods_enabled": hardware_methods_enabled
+                }
+            }
+
         device_profile = self.ai_engine.analyze_device(device)
         
         return {
@@ -515,6 +554,7 @@ class BypassManager:
             },
             'ai_analysis': {
                 'complexity_score': device_profile.complexity_score,
+                'frp_complexity': device_profile.frp_complexity,
                 'vulnerability_score': device_profile.vulnerability_score,
                 'recommended_methods': device_profile.recommended_methods,
                 'success_probabilities': device_profile.success_probability,

@@ -348,11 +348,57 @@ class DeviceManager:
         return new_devices
 
     def _scan_download_mode_devices(self) -> List[DeviceInfo]:
-        """Scan for devices in download mode (placeholder)"""
-        # This would implement detection for Samsung Download Mode,
-        # MediaTek Download Mode, Qualcomm EDL mode, etc.
-        # For now, return empty list
-        return []
+        """Detect Samsung devices in Download/Odin mode using Heimdall."""
+        devices = []
+
+        heimdall = shutil.which("heimdall")
+        if not heimdall:
+            self.logger.debug("Heimdall not found in PATH")
+            return devices
+
+        try:
+            result = subprocess.run(
+                [heimdall, "detect"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            output = (result.stdout + result.stderr).strip()
+            self.logger.debug(f"Heimdall detect output: {output}")
+
+            if "Device detected" not in output:
+                return devices
+
+            devices.append(DeviceInfo(
+                serial="samsung-download",
+                model="Samsung Download Mode",
+                manufacturer="Samsung",
+                android_version="Unknown",
+                sdk_version="unknown",
+                bootloader_version="unknown",
+                frp_status="unknown",
+                connection_type="download",
+                chipset="unknown",
+                brand="Samsung",
+                bootloader_status="unknown",
+                root_status="unknown",
+                product="Samsung",
+                device="Odin/Heimdall Download Mode"
+            ))
+
+            self.logger.info(
+                "Samsung Download Mode device detected via Heimdall"
+            )
+
+        except subprocess.TimeoutExpired:
+            self.logger.error("Heimdall detection timed out")
+        except Exception as e:
+            self.logger.error(
+                f"Error detecting Download Mode device: {e}"
+            )
+
+        return devices
     
     def _get_adb_device_info(self, serial: str, metadata: Dict[str, str] = None) -> Optional[DeviceInfo]:
         """Get detailed information for an ADB device"""
