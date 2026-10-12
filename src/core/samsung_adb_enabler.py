@@ -1,10 +1,13 @@
 
-import sys
+import shutil
+import subprocess
 import time
 import serial
 import serial.tools.list_ports
 import logging
 from typing import List, Optional, Callable
+
+from . import samsung_device_state
 
 class SamsungADBEnabler:
     """
@@ -14,6 +17,9 @@ class SamsungADBEnabler:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        # Populated by enable_adb() so callers can explain a refusal.
+        self.last_state: Optional[samsung_device_state.DeviceState] = None
+        self.last_verdict: Optional[samsung_device_state.Verdict] = None
 
     def get_samsung_modem_ports(self) -> List:
         """Find Samsung modem ports"""
@@ -32,31 +38,26 @@ class SamsungADBEnabler:
                 
         return samsung_ports
 
-    def send_at_command(self, ser: serial.Serial, command: str) -> bool:
-        """Send AT command and read response"""
+    def exchange(self, ser: serial.Serial, command: str) -> str:
+        """Send an AT command and return the full reply, error lines included.
+
+        Samsung's AT handler can take over a second to answer, so this waits for
+        the port to go idle instead of sampling ``in_waiting`` once. Sampling
+        immediately after a 0.1s sleep usually returns an empty string, which
+        made every command look like it had failed silently.
+        """
         try:
-            full_cmd = command.strip() + "\r\n"
-            ser.reset_input_buffer() # Clear old data
-            ser.write(full_cmd.encode())
-            time.sleep(0.1) # nPhoneKIT uses 0.1s in send()
-            
-            # Read logic similar to nPhoneKIT
-            output = []
-            while ser.in_waiting > 0:
-                line = ser.readline()
-                if not line:
-                    break
-                decoded_line = line.decode(errors='ignore').strip()
-                output.append(decoded_line)
-                
-            raw_response = "\n".join(output)
+            reply = samsung_device_state._converse(ser, command)
             self.logger.debug(f"Sent: {command.strip()}")
-            self.logger.debug(f"Response: {raw_response}")
-            
-            return "OK" in raw_response
+            self.logger.debug(f"Response: {reply}")
+            return reply
         except Exception as e:
             self.logger.error(f"Error sending {command}: {e}")
-            return False
+            return ""
+
+    def send_at_command(self, ser: serial.Serial, command: str) -> bool:
+        """Send an AT command, returning True when the device answered OK."""
+        return "OK" in self.exchange(ser, command).upper()
 
     def read_at_response(self, ser: serial.Serial, command: str) -> str:
         """Send AT command and return content response"""
@@ -130,10 +131,52 @@ class SamsungADBEnabler:
             
         return info
 
+    def _adb_devices(self) -> List[str]:
+        """Return the serials ADB currently sees, or [] if adb is unavailable."""
+        adb = shutil.which("adb")
+        if not adb:
+            self.logger.debug("adb binary not found; cannot verify the result")
+            return []
+        try:
+            out = subprocess.run(
+                [adb, "devices"], capture_output=True, text=True, timeout=15
+            ).stdout
+        except Exception as e:
+            self.logger.debug(f"adb devices failed: {e}")
+            return []
+        return [
+            line.split()[0]
+            for line in out.splitlines()[1:]
+            if line.strip() and not line.startswith("*")
+        ]
+
     def enable_adb(self, port_device: str, progress_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """Run the sequence to enable ADB trying multiple methods"""
+        """Enable ADB over the AT port, refusing to try when it cannot work.
+
+        Probes the device first. If its firmware requires a signing token for
+        protected AT commands, or if it is not in a state where the AT port can
+        be used at all, this returns False without sending any sequence and
+        leaves the reason in ``self.last_verdict``. Success means ADB actually
+        appeared, not merely that commands were sent.
+        """
         self.logger.info(f"Attempting to enable ADB on {port_device}...")
-        
+
+        if progress_callback:
+            progress_callback("Probing device state...")
+        state = samsung_device_state.probe(port_device)
+        self.last_state = state
+        decision = samsung_device_state.verdict(state)
+        self.last_verdict = decision
+
+        if not decision.feasible:
+            self.logger.warning(f"Not attempting any sequence: {decision.summary}")
+            if progress_callback:
+                progress_callback(decision.summary)
+            # Already-enabled is a success from the caller's point of view.
+            return decision.blocker == "already_enabled"
+
+        before = set(self._adb_devices())
+
         methods = [
             ("Method 2024", self._method_2024),
             ("Method 2022 (Aug-Dec)", self._method_aug2022_dec2022),
@@ -141,24 +184,43 @@ class SamsungADBEnabler:
         ]
 
         try:
-            # Open serial port once if possible, or per method
-            # Usually better to close/re-open between methods or retries
-            
             for name, method in methods:
                  if progress_callback:
                      progress_callback(f"Trying {name}...")
                  self.logger.info(f"Trying {name}...")
-                 
-                 if method(port_device, progress_callback):
-                     self.logger.info(f"{name} sequence completed. Allowing time for ADB to appear.")
-                     if progress_callback:
-                         progress_callback(f"{name} executed. Checking for ADB...")
-                     return True
-                 
+
+                 if not method(port_device, progress_callback):
+                     time.sleep(1)
+                     continue
+
+                 self.logger.info(f"{name} sequence completed. Allowing time for ADB to appear.")
+                 if progress_callback:
+                     progress_callback(f"{name} executed. Checking for ADB...")
+
+                 # The USB configuration change forces a re-enumeration, so give
+                 # the bus a few seconds before deciding it did not work.
+                 for _ in range(10):
+                     time.sleep(1)
+                     if set(self._adb_devices()) - before:
+                         self.logger.info(f"{name} worked: ADB is now present")
+                         return True
+
+                 self.logger.info(f"{name} ran but no new ADB device appeared")
                  time.sleep(1)
 
+            self.last_verdict = samsung_device_state.Verdict(
+                feasible=False,
+                blocker="no_adb_after_sequences",
+                summary=(
+                    "Every sequence ran but no ADB interface appeared. The commands "
+                    "were accepted yet did not change the USB configuration."
+                ),
+                next_steps=[
+                    "Check the download-mode screen for Knox Guard or Secure Download.",
+                ],
+            )
             return False
-            
+
         except Exception as e:
             self.logger.error(f"Unexpected error during enable_adb: {e}")
             if progress_callback:
@@ -166,12 +228,21 @@ class SamsungADBEnabler:
             return False
 
     def _execute_sequence(self, port_device: str, commands: List[str], method_name: str, progress_callback: Optional[Callable[[str], None]]) -> bool:
-        """Execute a list of AT commands"""
+        """Execute a list of AT commands, reporting whether any of them landed.
+
+        Returns True only if at least one command was accepted and none was
+        refused for want of a signing token. Returning True merely because the
+        serial port opened would report success on a device that refused every
+        single command.
+        """
         ser = None
+        accepted = 0
+        refused = 0
+        token_refusal = None
         try:
             ser = serial.Serial(port_device, 115200, timeout=2)
             time.sleep(0.5)
-            
+
             # Dial *#0*# first (common req)
             self.send_at_command(ser, "ATD*#0*#;")
             time.sleep(0.5)
@@ -180,11 +251,31 @@ class SamsungADBEnabler:
             for i, cmd in enumerate(commands):
                 if progress_callback and i % 5 == 0:
                      progress_callback(f"{method_name}: Sending command {i+1}/{total}")
-                
-                self.send_at_command(ser, cmd)
-                # nPhoneKIT doesn't strictly check for OK on every exploit command, just sends them
-                
-            return True
+
+                reply = self.exchange(ser, cmd).upper()
+                if any(t in reply for t in samsung_device_state._TOKEN_REFUSALS):
+                    refused += 1
+                    token_refusal = token_refusal or reply
+                    # A token refusal is final: the firmware will not run this
+                    # command however many times it is asked.
+                    break
+                if "ERROR" in reply:
+                    refused += 1
+                elif "OK" in reply:
+                    accepted += 1
+
+            if token_refusal:
+                self.logger.warning(
+                    f"[{method_name}] aborted: protected commands refused ({token_refusal})"
+                )
+                if progress_callback:
+                    progress_callback(f"{method_name}: refused by firmware, stopping")
+                return False
+
+            self.logger.info(
+                f"[{method_name}] {accepted} command(s) accepted, {refused} refused"
+            )
+            return accepted > 0
 
         except Exception as e:
             self.logger.error(f"[{method_name}] Error: {e}")
@@ -205,8 +296,9 @@ class SamsungADBEnabler:
             "AT+ACTIVATE=0,0,0",
             "AT+SWATD=1",
             "AT+SWATD=1",
-            "AT+PRECONFIG=2,VZW",
-            "AT+PRECONFIG=1,0",
+            # AT+PRECONFIG=2,VZW pushed a Verizon carrier preconfig onto whatever
+            # device was attached. That is not a read, and it has no business
+            # running on a non-Verizon unit, so it is not sent.
         ]
         return self._execute_sequence(port_device, commands, "Method 2024", progress_callback)
 
