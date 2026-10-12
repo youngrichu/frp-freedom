@@ -1,6 +1,6 @@
 from unittest.mock import Mock, patch
 
-from src.core.device_manager import DeviceInfo
+from src.core.device_manager import DeviceInfo, DeviceManager
 from src.gui.main_window import FRPFreedomApp
 
 
@@ -55,6 +55,33 @@ def test_format_device_info_text_uses_unknown_for_blank_optional_fields():
     assert "Security Patch: Unknown" in info_text
     assert "Build ID: Unknown" in info_text
     assert "FRP Status: Unknown" in info_text
+
+
+def test_scan_devices_deduplicates_duplicate_serials():
+    manager = DeviceManager.__new__(DeviceManager)
+
+    adb_device = make_device(serial="serial-001", connection_type="adb", manufacturer="Samsung")
+    duplicate_modem_device = DeviceInfo(
+        serial="serial-001",
+        model="Samsung Modem",
+        manufacturer="Samsung",
+        android_version="Unknown",
+        sdk_version="Unknown",
+        bootloader_version="Unknown",
+        frp_status="Unknown",
+        connection_type="modem",
+        brand="Samsung",
+        bootloader_status="Unknown",
+        root_status="Unknown",
+        device="COM12",
+        modem_port="COM12",
+    )
+
+    deduplicated = manager._deduplicate_devices([adb_device, duplicate_modem_device])
+
+    assert len(deduplicated) == 1
+    assert deduplicated[0].connection_type == "adb"
+    assert deduplicated[0].serial == "serial-001"
 
 
 def test_refresh_devices_uses_scan_devices_and_updates_selected_device():
