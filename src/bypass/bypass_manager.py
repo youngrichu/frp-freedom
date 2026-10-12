@@ -441,27 +441,47 @@ class BypassManager:
     def _verify_bypass_success(self, device: DeviceInfo) -> bool:
         """Verify that the bypass was successful"""
         try:
-            # Check if we can access the device without FRP restrictions
-            success, output = self.device_manager.execute_adb_command(
-                device.serial, 
-                ['shell', 'getprop', 'ro.frp.pst']
-            )
+            indicators = 0
+            required_indicators = 2
             
-            if success:
-                # If FRP property is empty or not set, bypass likely successful
-                if not output.strip() or output.strip() == '':
-                    return True
-                    
-            # Additional checks for specific bypass indicators
+            # Indicator 1: FRP partition property is empty/unset
             success, output = self.device_manager.execute_adb_command(
                 device.serial,
-                ['shell', 'pm', 'list', 'users']
+                ['shell', 'getprop', 'ro.frp.pst']
             )
+            if success and not output.strip():
+                indicators += 1
+                self.logger.debug("FRP verification: ro.frp.pst is empty")
             
-            if success and 'UserInfo{0:' in output:
-                return True
-                
-            return False
+            # Indicator 2: Setup wizard is complete
+            success, output = self.device_manager.execute_adb_command(
+                device.serial,
+                ['shell', 'settings', 'get', 'secure', 'user_setup_complete']
+            )
+            if success and output.strip() == '1':
+                indicators += 1
+                self.logger.debug("FRP verification: user_setup_complete is 1")
+            
+            # Indicator 3: Device is provisioned
+            success, output = self.device_manager.execute_adb_command(
+                device.serial,
+                ['shell', 'settings', 'get', 'global', 'device_provisioned']
+            )
+            if success and output.strip() == '1':
+                indicators += 1
+                self.logger.debug("FRP verification: device_provisioned is 1")
+            
+            # Indicator 4: No Google accounts present
+            success, output = self.device_manager.execute_adb_command(
+                device.serial,
+                ['shell', 'sqlite3', '/data/system/users/0/accounts.db',
+                 "SELECT COUNT(*) FROM accounts WHERE type='com.google';"]
+            )
+            if success and output.strip() == '0':
+                indicators += 1
+                self.logger.debug("FRP verification: no Google accounts found")
+            
+            return indicators >= required_indicators
             
         except Exception as e:
             self.logger.error(f"Error verifying bypass success: {e}")
@@ -516,6 +536,7 @@ class BypassManager:
             'ai_analysis': {
                 'complexity_score': device_profile.complexity_score,
                 'vulnerability_score': device_profile.vulnerability_score,
+                'frp_complexity': device_profile.frp_complexity,
                 'recommended_methods': device_profile.recommended_methods,
                 'success_probabilities': device_profile.success_probability,
                 'security_assessment': self._get_security_assessment_text(device_profile.vulnerability_score),

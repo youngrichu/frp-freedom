@@ -373,6 +373,7 @@ class DeviceManager:
                 self.logger.debug(f"FRP status for {serial}: {frp_status}")
                 
                 manufacturer = props.get('ro.product.manufacturer', 'unknown')
+                brand = props.get('ro.product.brand', manufacturer)
                 device_info = DeviceInfo(
                     serial=serial,
                     model=props.get('ro.product.model', 'unknown'),
@@ -383,9 +384,14 @@ class DeviceManager:
                     frp_status=frp_status,
                     connection_type='adb',
                     chipset=props.get('ro.hardware', 'unknown'),
-                    brand=manufacturer,
+                    brand=brand,
                     bootloader_status='unknown',
-                    root_status='unknown'
+                    root_status='unknown',
+                    security_patch=props.get('ro.build.version.security_patch', 'unknown'),
+                    api_level=props.get('ro.build.version.sdk', 'unknown'),
+                    build_id=props.get('ro.build.id', 'unknown'),
+                    product=props.get('ro.product.name', 'unknown'),
+                    device=props.get('ro.product.device', 'unknown')
                 )
                 
                 self.logger.debug(f"Created device info for {serial}: {device_info.model} ({device_info.manufacturer})")

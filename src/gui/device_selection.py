@@ -400,7 +400,7 @@ Notes:
 • Some methods require specific device states (bootloader unlocked, etc.)
 """
         else:
-            details = """
+            details = f"""
 Device Details:
 {'=' * 50}
 

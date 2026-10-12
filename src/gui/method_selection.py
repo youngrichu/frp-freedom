@@ -254,8 +254,8 @@ class MethodSelectionFrame(ttk.Frame):
         self.ai_text.configure(state='normal')
         self.ai_text.delete('1.0', tk.END)
         
-        # Format analysis text
-        profile = analysis.get('device_profile', {})
+        # BypassManager.get_ai_device_analysis returns 'ai_analysis'
+        ai_analysis = analysis.get('ai_analysis', {})
         
         analysis_text = f"""AI DEVICE ANALYSIS
 {'=' * 50}
@@ -266,17 +266,17 @@ FRP Status: {self.device.frp_status if self.device.frp_status else 'Unknown'}
 
 SECURITY ASSESSMENT
 {'-' * 30}
-{analysis.get('security_assessment', 'No assessment available')}
+{ai_analysis.get('security_assessment', 'No assessment available')}
 
-FRP COMPLEXITY: {profile.get('frp_complexity', 'Unknown').upper()}
-VULNERABILITY SCORE: {profile.get('vulnerability_score', 0):.2f}/1.0
+FRP COMPLEXITY: {ai_analysis.get('frp_complexity', 'Unknown').upper()}
+VULNERABILITY SCORE: {ai_analysis.get('vulnerability_score', 0):.2f}/1.0
 
 RECOMMENDED METHODS
 {'-' * 30}
 """
         
-        recommended_methods = profile.get('recommended_methods', [])
-        success_probs = profile.get('success_probabilities', {})
+        recommended_methods = ai_analysis.get('recommended_methods', [])
+        success_probs = ai_analysis.get('success_probabilities', {})
         
         if recommended_methods:
             for i, method_name in enumerate(recommended_methods[:5], 1):
@@ -291,7 +291,7 @@ RECOMMENDED METHODS
         
         analysis_text += f"""BYPASS STRATEGY
 {'-' * 30}
-{analysis.get('bypass_strategy', 'No strategy available')}
+{ai_analysis.get('bypass_strategy', 'No strategy available')}
 
 RECOMMENDATIONS
 {'-' * 30}

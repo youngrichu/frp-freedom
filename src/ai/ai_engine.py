@@ -388,19 +388,19 @@ class AIEngine:
     
     def get_average_execution_time(self) -> float:
         """Get average execution time across all methods"""
-        total_time = 0
+        total_duration = 0.0
         total_attempts = 0
         for stats in self.learning_data['method_stats'].values():
-            total_time += stats.get('total_time', 0)
+            total_duration += stats.get('total_duration', 0.0)
             total_attempts += stats['attempts']
-        return total_time / total_attempts if total_attempts > 0 else 0.0
-    
+        return total_duration / total_attempts if total_attempts > 0 else 0.0
+
     def get_fastest_methods(self) -> List[str]:
         """Get fastest methods by average execution time"""
         methods_with_time = []
         for method, stats in self.learning_data['method_stats'].items():
             if stats['attempts'] > 0:
-                avg_time = stats.get('total_time', 0) / stats['attempts']
+                avg_time = stats.get('total_duration', 0.0) / stats['attempts']
                 methods_with_time.append((method, avg_time))
         
         # Sort by average time (ascending)
