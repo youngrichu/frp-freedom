@@ -11,10 +11,11 @@ import logging
 import sys
 import os
 import shutil
+import threading
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import serial.tools.list_ports
 from .samsung_adb_enabler import SamsungADBEnabler
 
@@ -88,6 +89,7 @@ class DeviceManager:
         self.adb_path = self._find_adb_binary()
         self.fastboot_path = self._find_fastboot_binary()
         self.connected_devices: List[DeviceInfo] = []
+        self._scan_lock = threading.Lock()
         
     def _find_adb_binary(self) -> Optional[Path]:
         """Find ADB binary in system PATH or bundled tools"""
@@ -145,43 +147,51 @@ class DeviceManager:
         self.logger.warning("Fastboot binary not found. Some features may not work.")
         return None
     
-    def scan_devices(self) -> List[DeviceInfo]:
+    def scan_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for connected Android devices"""
+        with self._scan_lock:
+            return self._scan_devices(refresh_details)
+
+    def _scan_devices(self, refresh_details: bool) -> List[DeviceInfo]:
+        """Discover devices and refresh transient modem-port associations."""
         self.logger.info("Scanning for connected devices...")
         devices = []
         
         # Scan ADB devices
-        adb_devices = self._scan_adb_devices()
+        adb_devices = self._scan_adb_devices(refresh_details)
         devices.extend(adb_devices)
         
         # Scan fastboot devices
-        fastboot_devices = self._scan_fastboot_devices()
+        fastboot_devices = self._scan_fastboot_devices(refresh_details)
         devices.extend(fastboot_devices)
         
         # Scan Samsung Download/Odin mode devices via Heimdall
         download_devices = self._scan_download_mode_devices()
         devices.extend(download_devices)
-        
-        # Update connected_devices BEFORE modem scan so matching works correctly
-        self.connected_devices = devices
-        
-        # Scan Samsung modems (merged into existing devices if matched)
-        modem_devices = self.scan_samsung_modems()
-        devices.extend(modem_devices)
-        
-        # Final update with any new modem-only devices
-        self.connected_devices = devices
-        self.logger.info(f"Found {len(devices)} connected device(s)")
-        
-        return devices
+
+        # Match modems on scan-local copies. Cached records are the same
+        # objects already published to the UI, so clearing modem_port on
+        # them would be visible before the modem scan finishes.
+        local_devices = [replace(device) for device in devices]
+        for device in local_devices:
+            device.modem_port = ""
+
+        modem_devices = self.scan_samsung_modems(local_devices)
+        local_devices.extend(modem_devices)
+
+        self.connected_devices = local_devices
+        self.logger.info(f"Found {len(local_devices)} connected device(s)")
+
+        return local_devices
     
-    def _scan_adb_devices(self) -> List[DeviceInfo]:
+    def _scan_adb_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for ADB-connected devices"""
         if not self.adb_path:
             self.logger.debug("No ADB path found")
             return []
         
         devices = []
+        cached_devices = {device.serial: device for device in self.connected_devices}
         try:
             # Get device list
             result = subprocess.run(
@@ -218,8 +228,16 @@ class DeviceManager:
                         self.logger.debug(f"Found device: serial={serial}, status={status}, metadata={metadata}")
                         
                         if status in ['device', 'recovery']:
-                            self.logger.debug(f"Getting device info for authorized device: {serial}")
-                            device_info = self._get_adb_device_info(serial, metadata)
+                            cached_device = cached_devices.get(serial)
+                            if (
+                                not refresh_details
+                                and cached_device
+                                and cached_device.connection_type == 'adb'
+                            ):
+                                device_info = cached_device
+                            else:
+                                self.logger.debug(f"Getting device info for authorized device: {serial}")
+                                device_info = self._get_adb_device_info(serial, metadata)
                             if device_info:
                                 self.logger.debug(f"Successfully got device info for {serial}")
                                 devices.append(device_info)
@@ -245,13 +263,14 @@ class DeviceManager:
         self.logger.debug(f"Returning {len(devices)} devices")
         return devices
     
-    def _scan_fastboot_devices(self) -> List[DeviceInfo]:
+    def _scan_fastboot_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for fastboot-connected devices"""
         if not self.fastboot_path:
             self.logger.debug("Fastboot binary not found")
             return []
         
         devices = []
+        cached_devices = {device.serial: device for device in self.connected_devices}
         try:
             result = subprocess.run(
                 [str(self.fastboot_path), "devices"],
@@ -283,7 +302,15 @@ class DeviceManager:
                     self.logger.debug(f"Found fastboot device: serial={serial}, status={status}")
                     
                     if status == 'fastboot':  # Device is in fastboot mode
-                        device_info = self._get_fastboot_device_info(serial)
+                        cached_device = cached_devices.get(serial)
+                        if (
+                            not refresh_details
+                            and cached_device
+                            and cached_device.connection_type == 'fastboot'
+                        ):
+                            device_info = cached_device
+                        else:
+                            device_info = self._get_fastboot_device_info(serial)
                         if device_info:
                             devices.append(device_info)
                             self.logger.debug(f"Added fastboot device: {serial}")
@@ -297,8 +324,13 @@ class DeviceManager:
         return devices
     
     
-    def scan_samsung_modems(self) -> List[DeviceInfo]:
-        """Scan for Samsung devices in modem mode"""
+    def scan_samsung_modems(self, devices: Optional[List[DeviceInfo]] = None) -> List[DeviceInfo]:
+        """Scan for Samsung devices in modem mode.
+
+        ``devices`` is the in-progress scan list to attach ports to. When it
+        is omitted, the last published device list is used.
+        """
+        candidates = self.connected_devices if devices is None else devices
         self.logger.info("Scanning for Samsung modem devices...")
         new_devices = []
         
@@ -319,8 +351,8 @@ class DeviceManager:
                     # Try to get serial from port
                     port_serial = getattr(port, 'serial_number', '')
                     
-                    # Check against existing devices
-                    for device in self.connected_devices:
+                    # Check against the devices being published by this scan
+                    for device in candidates:
                         # Check strict serial match if available
                         if port_serial and device.serial == port_serial:
                             self.logger.info(f"Matched modem {port.device} to existing device {device.serial}")

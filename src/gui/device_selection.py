@@ -25,6 +25,7 @@ class DeviceSelectionFrame(ttk.Frame):
         self.devices: List[DeviceInfo] = []
         self.selected_device: Optional[DeviceInfo] = None
         self.device_map: dict[str, DeviceInfo] = {} # Maps tree item IDs to device objects
+        self.device_items_by_key: dict[tuple[str, str], str] = {}
         
         self.setup_widgets()
         self.refresh_devices()
@@ -289,16 +290,48 @@ Device Connection Guide
             return
             
         self.devices = devices
-        
-        # Clear existing items and device map
+
+        current_keys = set()
         try:
-            for item in self.device_tree.get_children():
-                self.device_tree.delete(item)
-            self.device_map.clear()
+            for device in devices:
+                key = (device.connection_type, device.serial)
+                current_keys.add(key)
+                values = (
+                    device.serial[:12] + "..." if len(device.serial) > 15 else device.serial,
+                    device.model or "Unknown",
+                    device.brand or "Unknown",
+                    device.android_version or "Unknown",
+                    device.connection_type.upper(),
+                    device.frp_status or "Unknown",
+                )
+
+                item_id = self.device_items_by_key.get(key)
+                if item_id:
+                    if self.device_tree.item(item_id, 'values') != values:
+                        self.device_tree.item(item_id, values=values)
+                    self._replace_selected_device(key, device)
+                    self.device_map[item_id] = device
+                else:
+                    item_id = self.device_tree.insert('', 'end', values=values)
+                    self.device_items_by_key[key] = item_id
+                    self.device_map[item_id] = device
+
+            for key in list(self.device_items_by_key.keys() - current_keys):
+                item_id = self.device_items_by_key.pop(key)
+                selected_device = self.selected_device
+                was_selected = item_id in self.device_tree.selection() or (
+                    selected_device is not None
+                    and (selected_device.connection_type, selected_device.serial) == key
+                )
+                if item_id in self.device_tree.selection():
+                    self.device_tree.selection_remove(item_id)
+                self.device_tree.delete(item_id)
+                self.device_map.pop(item_id, None)
+                if was_selected:
+                    self.on_device_select(None)
         except (tk.TclError, AttributeError):
-            # Widget was destroyed, ignore
             return
-        
+
         # Update status label if it exists
         try:
             if hasattr(self, 'status_label') and self.status_label.winfo_exists():
@@ -310,42 +343,29 @@ Device Connection Guide
             # Status label was destroyed, ignore
             pass
         
-        # Add devices to tree
-        try:
-            for device in devices:
-                # Determine FRP status display
-                frp_status = device.frp_status if device.frp_status else "Unknown"
-                
-                # Add device to tree
-                item_id = self.device_tree.insert('', 'end', values=(
-                    device.serial[:12] + "..." if len(device.serial) > 15 else device.serial,
-                    device.model or "Unknown",
-                    device.brand or "Unknown",
-                    device.android_version or "Unknown",
-                    device.connection_type.upper(),
-                    frp_status
-                ))
-                
-                # Store device reference in map
-                self.device_map[item_id] = device
-        except (tk.TclError, AttributeError):
-            # Widget was destroyed during iteration, ignore
+    def _replace_selected_device(self, key, device: DeviceInfo):
+        """Point the current selection at a replacement record for the same row."""
+        selected_device = self.selected_device
+        if not selected_device:
             return
-    
+        if (selected_device.connection_type, selected_device.serial) != key:
+            return
+        if selected_device != device:
+            self.selected_device = device
+            self.update_device_details(device)
+        elif selected_device is not device:
+            self.selected_device = device
+
     def on_device_select(self, event):
         """Handle device selection in tree"""
         selection = self.device_tree.selection()
-        if selection:
-            item_id = selection[0]
-            # Get device object from map
-            self.selected_device = self.device_map.get(item_id)
-            
-            # Enable buttons
+        item_id = selection[0] if selection else None
+        device = self.device_map.get(item_id) if item_id else None
+        if device:
+            self.selected_device = device
             self.select_button.configure(state='normal')
             self.info_button.configure(state='normal')
-            
-            # Update device details tab
-            self.update_device_details(self.selected_device)
+            self.update_device_details(device)
         else:
             self.selected_device = None
             self.select_button.configure(state='disabled')
