@@ -596,17 +596,12 @@ Proceed only if you understand the risks and legal implications.
         def scan_devices():
             while not self._device_scan_stop.wait(self.DEVICE_SCAN_INTERVAL_SECONDS):
                 device_frame = getattr(self, 'device_frame', None)
-                if self.current_step != 1 or not device_frame:
+                if self.current_step != 1 or device_frame is None:
                     continue
 
                 try:
-                    if not device_frame.winfo_exists():
-                        continue
-
                     devices = self.device_manager.scan_devices(refresh_details=False)
                     self.root.after(0, self._complete_device_scan, device_frame, devices)
-                except (tk.TclError, AttributeError):
-                    continue
                 except Exception as e:
                     self.logger.error(f"Device scanning error: {e}")
 

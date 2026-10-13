@@ -15,7 +15,7 @@ import threading
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import serial.tools.list_ports
 from .samsung_adb_enabler import SamsungADBEnabler
 
@@ -168,21 +168,21 @@ class DeviceManager:
         # Scan Samsung Download/Odin mode devices via Heimdall
         download_devices = self._scan_download_mode_devices()
         devices.extend(download_devices)
-        
-        # Update connected_devices BEFORE modem scan so matching works correctly
-        self.connected_devices = devices
-        for device in devices:
+
+        # Match modems on scan-local copies. Cached records are the same
+        # objects already published to the UI, so clearing modem_port on
+        # them would be visible before the modem scan finishes.
+        local_devices = [replace(device) for device in devices]
+        for device in local_devices:
             device.modem_port = ""
-        
-        # Scan Samsung modems (merged into existing devices if matched)
-        modem_devices = self.scan_samsung_modems()
-        devices.extend(modem_devices)
-        
-        # Final update with any new modem-only devices
-        self.connected_devices = devices
-        self.logger.info(f"Found {len(devices)} connected device(s)")
-        
-        return devices
+
+        modem_devices = self.scan_samsung_modems(local_devices)
+        local_devices.extend(modem_devices)
+
+        self.connected_devices = local_devices
+        self.logger.info(f"Found {len(local_devices)} connected device(s)")
+
+        return local_devices
     
     def _scan_adb_devices(self, refresh_details: bool = True) -> List[DeviceInfo]:
         """Scan for ADB-connected devices"""
@@ -324,8 +324,13 @@ class DeviceManager:
         return devices
     
     
-    def scan_samsung_modems(self) -> List[DeviceInfo]:
-        """Scan for Samsung devices in modem mode"""
+    def scan_samsung_modems(self, devices: Optional[List[DeviceInfo]] = None) -> List[DeviceInfo]:
+        """Scan for Samsung devices in modem mode.
+
+        ``devices`` is the in-progress scan list to attach ports to. When it
+        is omitted, the last published device list is used.
+        """
+        candidates = self.connected_devices if devices is None else devices
         self.logger.info("Scanning for Samsung modem devices...")
         new_devices = []
         
@@ -346,8 +351,8 @@ class DeviceManager:
                     # Try to get serial from port
                     port_serial = getattr(port, 'serial_number', '')
                     
-                    # Check against existing devices
-                    for device in self.connected_devices:
+                    # Check against the devices being published by this scan
+                    for device in candidates:
                         # Check strict serial match if available
                         if port_serial and device.serial == port_serial:
                             self.logger.info(f"Matched modem {port.device} to existing device {device.serial}")

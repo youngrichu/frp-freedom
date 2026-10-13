@@ -309,24 +309,26 @@ Device Connection Guide
                 if item_id:
                     if self.device_tree.item(item_id, 'values') != values:
                         self.device_tree.item(item_id, values=values)
-                    selected_device = self.selected_device
-                    if (
-                        selected_device
-                        and (selected_device.connection_type, selected_device.serial) == key
-                        and selected_device is not device
-                    ):
-                        self.selected_device = device
-                        self.update_device_details(device)
+                    self._replace_selected_device(key, device)
                     self.device_map[item_id] = device
                 else:
                     item_id = self.device_tree.insert('', 'end', values=values)
                     self.device_items_by_key[key] = item_id
                     self.device_map[item_id] = device
 
-            for key in self.device_items_by_key.keys() - current_keys:
+            for key in list(self.device_items_by_key.keys() - current_keys):
                 item_id = self.device_items_by_key.pop(key)
+                selected_device = self.selected_device
+                was_selected = item_id in self.device_tree.selection() or (
+                    selected_device is not None
+                    and (selected_device.connection_type, selected_device.serial) == key
+                )
+                if item_id in self.device_tree.selection():
+                    self.device_tree.selection_remove(item_id)
                 self.device_tree.delete(item_id)
                 self.device_map.pop(item_id, None)
+                if was_selected:
+                    self.on_device_select(None)
         except (tk.TclError, AttributeError):
             return
 
@@ -341,20 +343,29 @@ Device Connection Guide
             # Status label was destroyed, ignore
             pass
         
+    def _replace_selected_device(self, key, device: DeviceInfo):
+        """Point the current selection at a replacement record for the same row."""
+        selected_device = self.selected_device
+        if not selected_device:
+            return
+        if (selected_device.connection_type, selected_device.serial) != key:
+            return
+        if selected_device != device:
+            self.selected_device = device
+            self.update_device_details(device)
+        elif selected_device is not device:
+            self.selected_device = device
+
     def on_device_select(self, event):
         """Handle device selection in tree"""
         selection = self.device_tree.selection()
-        if selection:
-            item_id = selection[0]
-            # Get device object from map
-            self.selected_device = self.device_map.get(item_id)
-            
-            # Enable buttons
+        item_id = selection[0] if selection else None
+        device = self.device_map.get(item_id) if item_id else None
+        if device:
+            self.selected_device = device
             self.select_button.configure(state='normal')
             self.info_button.configure(state='normal')
-            
-            # Update device details tab
-            self.update_device_details(self.selected_device)
+            self.update_device_details(device)
         else:
             self.selected_device = None
             self.select_button.configure(state='disabled')
